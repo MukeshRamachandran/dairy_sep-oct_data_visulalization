@@ -1,0 +1,1604 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Dairy farm records dashboard: milk, breeding, health and money, day by day.">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Dairy Farm Records Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Carlito:wght@400;700&family=Arimo:wght@400;700&family=Noto+Sans+Tamil:wght@400;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: a farm ledger read top-down - summary strip, "needs attention" beside the 60-day calendar, then one band per register */
+:root{
+  --bg:#E6F4E9; --surface:#FFFFFF; --sunk:#F0F8F1; --ink:#14221A; --muted:#566960; --line:#CFE3D4; color-scheme:light;
+  --accent:#1F5E3B; --accent-soft:#DCEDE2; --mint:#7CBF95; --sky:#5B8DB8; --gold:#B07400; --gold-soft:#F5E9CF;
+  --good:#22704A; --warn:#9A5B00; --bad:#B42318; --info:#2D5B88;
+  --good-bg:#E0F0E6; --warn-bg:#FAEDD6; --bad-bg:#FBE3E0; --info-bg:#E2EBF5; --neutral-bg:#EAEEEA;
+  --shadow:0 1px 2px rgba(20,40,28,.06),0 6px 18px rgba(20,40,28,.05);
+  --f-display:Calibri,"Carlito","Noto Sans Tamil","Segoe UI",sans-serif;
+  --f-body:Arial,"Arimo","Noto Sans Tamil",Helvetica,sans-serif;
+  --f-tamil:"Noto Sans Tamil","Latha","Nirmala UI",sans-serif;
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+.wrap{max-width:1240px;margin:0 auto}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+.ta{font-family:var(--f-tamil);font-weight:400;color:var(--muted);font-size:.78em;letter-spacing:0}
+.num,td,.kpi-v{font-variant-numeric:tabular-nums}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+/* header */
+header.top{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between;padding-block:28px 18px}
+.brand small{display:block;text-transform:uppercase;letter-spacing:.12em;font-size:11px;font-weight:700;color:var(--accent)}
+.brand h1{font-size:clamp(26px,3.6vw,38px);font-weight:700;line-height:1.1}
+.brand p{margin:6px 0 0;color:var(--muted);font-size:14px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface);padding:9px 14px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.btn.primary:hover{filter:brightness(1.08)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;background:var(--neutral-bg);color:var(--muted)}
+.chip.sample{background:var(--gold-soft);color:var(--gold)}
+.chip.live{background:var(--good-bg);color:var(--good)}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+
+/* nav + period */
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);
+  display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between;padding-block:10px;margin-bottom:22px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+nav.sections{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;min-width:0}
+nav.sections a{color:var(--muted);text-decoration:none;font-weight:700;font-size:14px;padding:6px 10px;border-radius:8px;white-space:nowrap}
+nav.sections a:hover{background:var(--sunk);color:var(--ink)}
+.period{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.period select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;font-weight:700;color:var(--ink)}
+
+/* sections */
+section{margin-bottom:34px;scroll-margin-top:72px}
+.sec-h{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin-bottom:12px}
+.sec-h h2{font-size:22px;font-weight:700}
+.sec-h p{margin:0;color:var(--muted);font-size:13px}
+.grid{display:grid;gap:14px}
+.g-2{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr)}
+.g-2b{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}
+.g-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:900px){.g-2,.g-2b,.g-3{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;min-width:0;box-shadow:var(--shadow)}
+.panel h3{font-size:15px;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.panel h3 span.note{font-family:var(--f-body);font-weight:400;font-size:12px;color:var(--muted)}
+.empty{color:var(--muted);font-size:14px;padding:18px 0;text-align:center}
+.empty b{display:block;color:var(--ink);margin-bottom:2px}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:14px}
+@media (max-width:1000px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:520px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--surface);padding:14px 16px;min-width:0}
+.kpi-l{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.kpi-v{font-family:var(--f-display);font-size:clamp(22px,2.4vw,28px);font-weight:700;line-height:1.2;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi-v small{font-family:var(--f-body);font-size:13px;color:var(--muted);font-weight:400;margin-left:3px}
+.kpi-s{font-size:12px;color:var(--muted);margin-top:2px}
+.up{color:var(--good);font-weight:700}.down{color:var(--bad);font-weight:700}
+
+.herd{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.herd div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 12px;display:flex;gap:8px;align-items:baseline}
+.herd b{font-family:var(--f-display);font-size:20px}
+.herd span{font-size:13px;color:var(--muted)}
+
+/* alerts */
+.alerts{display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto;padding-right:2px}
+.alert{flex-shrink:0;display:grid;grid-template-columns:6px minmax(0,1fr);gap:12px;border-radius:10px;background:var(--sunk);border:1px solid var(--line);padding:10px 12px 10px 0;overflow:hidden}
+.alert .stripe{border-radius:0 4px 4px 0}
+.alert.bad .stripe{background:var(--bad)}.alert.warn .stripe{background:var(--warn)}.alert.info .stripe{background:var(--info)}.alert.good .stripe{background:var(--good)}
+.alert b{display:block;font-size:14px}
+.alert p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+.alert button.link{background:none;border:0;padding:0;color:var(--accent);font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.counts{display:flex;gap:6px;flex-wrap:wrap}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.pill.bad{background:var(--bad-bg);color:var(--bad)}.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.pill.info{background:var(--info-bg);color:var(--info)}.pill.good{background:var(--good-bg);color:var(--good)}
+.pill.neutral{background:var(--neutral-bg);color:var(--muted)}
+
+/* calendar */
+.cal{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;max-height:560px;overflow:auto}
+.cal li{display:grid;grid-template-columns:54px minmax(0,1fr);gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.cal li:last-child{border-bottom:0}
+.cal li.good .d{background:var(--good-bg);color:var(--good)}
+.cal li.bad .d{background:var(--bad-bg);color:var(--bad)}
+.cal li.info .d{background:var(--info-bg);color:var(--info)}
+.cal li.warn .d{background:var(--warn-bg);color:var(--warn)}
+.cal li .d span{color:inherit;opacity:.8}
+tr.sel td{background:var(--accent-soft)!important}
+tr.nodata td{color:var(--muted)}
+tr.tot td{font-weight:700;border-top:2px solid var(--line);background:var(--sunk)}
+td.wd{white-space:nowrap}
+#charts,#compare{display:none}
+body.page-charts #charts,body.page-compare #compare{display:block}
+body.page-charts section:not(#charts),body.page-compare section:not(#compare){display:none}
+.cmp-days{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end}
+.cmp-days label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.cmp-days select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;font-weight:700;color:var(--ink);font-size:15px;text-transform:none;letter-spacing:0;min-width:170px}
+.cmp-days label.a select{border-left:5px solid var(--mint)}
+.cmp-days label.b select{border-left:5px solid var(--accent)}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.presets button,.qsel button{border:1px solid var(--line);background:var(--sunk);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:700;cursor:pointer}
+.presets button:hover,.qsel button:hover{border-color:var(--accent);color:var(--accent)}
+fieldset.cmp-pick{border:0;padding:0;margin:16px 0 0}
+fieldset.cmp-pick legend{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.qsel{display:inline-flex;gap:6px;flex-wrap:wrap;text-transform:none;letter-spacing:0}
+.pick-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px 18px}
+.pick-groups h4{margin:0 0 4px;font-size:13px;color:var(--accent)}
+.pick-groups label{display:flex;gap:8px;align-items:center;font-size:14px;padding:3px 0;cursor:pointer}
+.pick-groups input{width:16px;height:16px;accent-color:var(--accent)}
+.headline{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.headline div{background:var(--sunk);border-radius:10px;padding:10px 12px}
+.headline span{display:block;font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.headline b{font-family:var(--f-display);font-size:22px}
+.pair{display:flex;flex-direction:column;gap:3px;min-width:120px}
+.pair i{display:block;height:8px;border-radius:4px}
+.pair i.a{background:var(--mint)}.pair i.b{background:var(--accent)}
+.chg.flat{color:var(--muted)}
+th.ca{border-bottom:3px solid var(--mint)}th.cb{border-bottom:3px solid var(--accent)}
+nav.sections a.on{background:var(--accent-soft);color:var(--accent)}
+.g-2c{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:900px){.g-2c{grid-template-columns:minmax(0,1fr)}}
+.multi{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.mini{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--sunk);min-width:0}
+.mini button{background:none;border:0;padding:0;font-weight:700;font-size:14px;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.mini .m{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.mini .m span{font-size:12px;color:var(--muted)}
+.stackbar{display:flex;height:34px;border-radius:8px;overflow:hidden;margin:6px 0 12px}
+.stackbar span{display:grid;place-items:center;color:var(--surface);font-weight:700;font-size:13px;min-width:0}
+.keys{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px;font-size:13px}
+.keys div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:4px 0}
+.keys i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px}
+#dayTbl table{min-width:1180px}
+#dayTbl td:last-child{min-width:240px}
+#dayTbl td.r{white-space:nowrap}
+.chg{font-size:12px;font-weight:700}
+.cal .d{text-align:center;border-radius:8px;background:var(--sunk);padding:4px 0;line-height:1.1}
+.cal .d b{display:block;font-family:var(--f-display);font-size:19px}
+.cal .d span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.cal li.over .d{background:var(--bad-bg);color:var(--bad)}
+.cal li.over .d span{color:var(--bad)}
+.cal .t{font-size:14px;font-weight:700}
+.cal .s{font-size:13px;color:var(--muted)}
+
+/* charts */
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.ax{fill:var(--muted);font-size:11px;font-family:var(--f-body)}
+.gridl{stroke:var(--line);stroke-width:1}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;padding:6px 9px;border-radius:8px;white-space:nowrap;transform:translate(-50%,-110%);z-index:3;line-height:1.4}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.sparks{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px}
+.spark .v{font-family:var(--f-display);font-size:24px;font-weight:700}
+.spark .l{font-size:12px;color:var(--muted)}
+
+/* bars */
+.bars{display:flex;flex-direction:column;gap:6px}
+.barrow{display:grid;grid-template-columns:minmax(80px,140px) minmax(0,1fr) 64px;gap:10px;align-items:center;background:none;border:0;padding:3px 4px;border-radius:8px;text-align:left;cursor:pointer;width:100%}
+.barrow.static{cursor:default}
+.barrow:not(.static):hover{background:var(--sunk)}
+.barrow .n{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.barrow .n small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.track{display:block;height:12px;background:var(--sunk);border-radius:6px;overflow:hidden}
+.fill{display:block;height:100%;border-radius:6px;background:var(--accent)}
+.fill.warn{background:var(--warn)}.fill.gold{background:var(--gold)}
+.barrow .v{font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
+
+/* tables */
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tr.click{cursor:pointer}tr.click:hover td{background:var(--sunk)}
+td .sub{display:block;color:var(--muted);font-size:12px}
+.r{text-align:right}
+.vm td.cell{text-align:center}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:middle}
+.dot.good{background:var(--good)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}.dot.none{background:transparent;border:1.5px dashed var(--line)}
+.vm td.cell small{display:block;color:var(--muted);font-size:11px}
+
+/* drawer */
+.scrim{position:fixed;inset:0;background:rgba(10,20,14,.45);z-index:20}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--bg);z-index:21;overflow:auto;border-left:1px solid var(--line);
+  padding:calc(18px + env(safe-area-inset-top,0px)) max(18px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) 18px}
+.drawer .x{position:sticky;top:0;float:right;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700}
+.drawer h2{font-size:26px}
+.drawer .meta{color:var(--muted);font-size:13px;margin:2px 0 14px}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.facts div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.facts b{display:block;font-family:var(--f-display);font-size:18px}
+.facts span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.drawer .panel{margin-bottom:12px}
+.hist{list-style:none;margin:0;padding:0}
+.hist li{padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.hist li:last-child{border:0}
+.hist li span{color:var(--muted)}
+
+/* drop + toast */
+.drop{position:fixed;inset:0;z-index:30;background:color-mix(in srgb,var(--accent) 18%,transparent);border:3px dashed var(--accent);display:grid;place-items:center;font-family:var(--f-display);font-size:24px;font-weight:700;color:var(--accent)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:40;font-size:14px;max-width:calc(100% - 32px)}
+.how{background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:16px 18px;font-size:14px;color:var(--muted)}
+.how ol{margin:6px 0 0;padding-left:20px}
+.how b{color:var(--ink)}
+footer{color:var(--muted);font-size:12px;margin-top:18px}
+@media (prefers-reduced-motion:no-preference){.fill{transition:width .5s ease}}
+
+/* ---- minimal layer: flat surfaces, hairlines, one green, more air ---- */
+:root{--bg:#EDF2EB;--surface:#FAFBF8;--sunk:#F3F6F1;--line:#DDE5DA;--gold:#8FA096;--gold-soft:#EEF2EF;--mint:#7FA88C;--sky:#4E7A63;--info:#4F6B5C;--accent-soft:#E3EADF;--shadow:none}
+body{line-height:1.55}
+.wrap{max-width:1180px}
+header.top{padding-block:40px 24px}
+.brand small{font-weight:400;letter-spacing:.16em;color:var(--muted)}
+.brand h1{font-weight:400;font-size:clamp(28px,3.4vw,40px);letter-spacing:-.02em}
+.brand p{font-size:13px}
+.ta{opacity:.75}
+.bar{border-bottom:1px solid var(--line);margin-bottom:32px}
+nav.sections a{font-weight:400;border-radius:0;padding:8px 10px;border-bottom:2px solid transparent}
+nav.sections a:hover{background:none;color:var(--ink)}
+nav.sections a.on{background:none;color:var(--ink);border-bottom-color:var(--accent)}
+.period select,.cmp-days select{border-color:var(--line);font-weight:400}
+section{margin-bottom:56px}
+.sec-h{margin-bottom:18px}
+.sec-h h2{font-size:20px;font-weight:400;letter-spacing:-.01em}
+.grid{gap:20px}
+.panel{border:1px solid var(--line);border-radius:12px;padding:22px 24px;box-shadow:none}
+.panel h3{font-weight:400;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px}
+.panel h3 span.note{text-transform:none;letter-spacing:0}
+.kpis{background:none;border:0;border-radius:0;gap:0;margin-bottom:22px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.kpi{background:none;padding:18px 16px 18px 0}
+.kpi-l{font-weight:400;letter-spacing:.08em}
+.kpi-v{font-weight:400;font-size:clamp(24px,2.6vw,32px)}
+.herd{gap:22px;margin-bottom:28px}
+.herd div{background:none;border:0;padding:0}
+.herd b{font-weight:400;font-size:18px}
+.alerts{gap:0}
+.alert{background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;grid-template-columns:3px minmax(0,1fr);padding:12px 0}
+.alert:last-child{border-bottom:0}
+.alert .stripe{border-radius:2px}
+.alert b{font-weight:700;font-size:14px}
+.pill{font-weight:400;background:none!important;border:1px solid currentColor;padding:1px 8px}
+.cal li .d,.cal li.good .d,.cal li.bad .d,.cal li.info .d,.cal li.warn .d,.cal li.over .d{background:none;border:1px solid var(--line)}
+.cal .d b{font-weight:400}
+.cal .t{font-weight:400}
+.btn,.presets button,.qsel button{background:none;font-weight:400}
+.track{height:6px;border-radius:3px}
+.fill{border-radius:3px}
+.barrow .n{font-weight:400}
+.headline div,.mini{background:none;border:1px solid var(--line)}
+.headline b,.facts b,.spark .v{font-weight:400}
+.facts div{background:none}
+th{font-weight:400}
+tr.tot td{background:none}
+tr.sel td{background:var(--sunk)!important}
+.how{border-style:solid;background:none}
+.stackbar{height:22px}
+.stackbar span{font-weight:400;font-size:12px}
+.chart svg path[fill-opacity]{fill-opacity:.06}
+/* ---- clean-up pass: square corners, no stripes, no motion ---- */
+*,*::before,*::after{border-radius:0!important}
+svg rect{rx:0;ry:0}
+.fill{transition:none!important}
+.alert{grid-template-columns:62px minmax(0,1fr)!important;padding:12px 0!important}
+.sev{font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding-top:3px}
+.sev.bad{color:var(--bad)}.sev.warn{color:var(--warn)}.sev.info{color:var(--muted)}.sev.good{color:var(--good)}
+.cmp-days label.a select,.cmp-days label.b select{border-left:1px solid var(--line)}
+.headline{display:flex;flex-wrap:wrap;gap:8px 40px}
+.headline div{border:0!important;padding:0;background:none}
+footer p{margin:0 0 8px;max-width:820px}
+/* ---- professional colour pass: green headings, slate figures ---- */
+:root{--head:#1B5136;--figure:#1E2D35}
+.brand small{color:var(--head);font-weight:700}
+.brand h1{color:var(--head);font-weight:700}
+.sec-h h2{color:var(--head);font-weight:700;font-size:22px}
+.panel h3{color:var(--head);font-weight:700;letter-spacing:.07em}
+.drawer h2{color:var(--head)}
+.kpi-l{color:var(--head);font-weight:700}
+.kpi-v,.herd b,.headline b,.facts b,.spark .v,.cal .d b{color:var(--figure);font-weight:700}
+.kpi-v small{color:var(--muted);font-weight:400}
+td.r,.barrow .v{color:var(--figure)}
+td.r .sub{color:var(--muted)}
+th{color:var(--head)}
+nav.sections a.on{color:var(--head);font-weight:700}
+.lang{display:inline-flex;border:1px solid var(--head)}
+.lang button{background:none;border:0;padding:7px 14px;font-size:14px;cursor:pointer;color:var(--head)}
+.lang button[aria-pressed="true"]{background:var(--head);color:var(--surface);font-weight:700}
+.lang button[data-lang="ta"]{font-family:"Noto Sans Tamil",var(--f-body)}
+html[lang="ta"] .ta{display:none}
+html[lang="ta"] .kpi-l,html[lang="ta"] .panel h3,html[lang="ta"] th{text-transform:none;letter-spacing:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <small>Dairy farm records · <span class="ta">பண்ணை பதிவேடு</span></small>
+      <h1 id="farmName">Dairy Farm Dashboard</h1>
+      <p id="farmSub">Reads the 12-sheet Dairy Farm Records workbook</p>
+    </div>
+    <div class="actions">
+      <span id="srcChip" class="chip sample" hidden>Sample data</span>
+      <button class="btn primary" id="loadBtn" type="button" hidden>Load my workbook</button>
+      <button class="btn" id="sampleBtn" type="button" hidden>Show sample data</button>
+      <input type="file" id="fileIn" accept=".xlsx,.xls,.xlsm" hidden>
+      <div class="lang" role="group" aria-label="Language"><button type="button" data-lang="en" aria-pressed="true">English</button><button type="button" data-lang="ta" aria-pressed="false">தமிழ்</button></div>
+    </div>
+  </header>
+
+  <div class="bar">
+    <nav class="sections" aria-label="Sections">
+      <a href="#overview" class="on">Overview</a><a href="#charts">Charts</a><a href="#compare">Compare</a><a href="#daily">Day by day</a><a href="#milk">Milk</a><a href="#breeding">Breeding</a><a href="#health">Health</a><a href="#money">Money</a><a href="#calves">Calves</a>
+    </nav>
+    <label class="period" for="periodSel">Show
+      <select id="periodSel"></select>
+    </label>
+  </div>
+
+  <section id="overview">
+    <div class="kpis" id="kpis"></div>
+    <div class="herd" id="herdStrip"></div>
+    <div class="grid g-2">
+      <div class="panel">
+        <h3>Needs attention <span class="ta">கவனிக்க வேண்டியவை</span> <span class="counts" id="alertCounts"></span></h3>
+        <div class="alerts" id="alerts"></div>
+      </div>
+      <div class="panel">
+        <h3>Farm diary <span class="note" id="diaryNote">AI, calving, treatments, vaccines, payments</span></h3>
+        <ul class="cal" id="calendar"></ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="charts">
+    <div class="sec-h"><h2>Charts <span class="ta">வரைபடங்கள்</span></h2><p>10 Sep – 10 Oct 2026, day by day · tap any day in a chart to select it</p></div>
+    <div class="grid">
+      <div class="panel">
+        <h3>Morning and evening milk, every day <span class="note">litres</span></h3>
+        <div class="chart" id="cMilkStack"></div>
+        <div class="legend"><span><i style="background:var(--accent)"></i>Morning</span><span><i style="background:var(--mint)"></i>Evening</span></div>
+      </div>
+      <div class="panel">
+        <h3>Each cow's daily milk <span class="note">same scale for every cow · tap a name for her card</span></h3>
+        <div class="multi" id="cCows"></div>
+      </div>
+      <div class="grid g-2c">
+        <div class="panel"><h3>Fat % <span class="note">dashed line: 3.5% benchmark</span></h3><div class="chart" id="cFat"></div></div>
+        <div class="panel"><h3>SNF % <span class="note">dashed line: 8.5% benchmark</span></h3><div class="chart" id="cSnf"></div></div>
+        <div class="panel"><h3>Money in vs money out, running total <span class="note">gap = profit so far</span></h3><div class="chart" id="cCum"></div>
+          <div class="legend"><span><i style="background:var(--accent)"></i>Milk value + other income</span><span><i style="background:var(--gold)"></i>Expenses</span></div></div>
+        <div class="panel"><h3>Price received per litre <span class="note">₹ per litre, from fat and SNF</span></h3><div class="chart" id="cRate"></div></div>
+        <div class="panel"><h3>Milk per kg of concentrate <span class="note">litres per kg · higher is better</span></h3><div class="chart" id="cEff"></div></div>
+        <div class="panel"><h3>Where the money went <span class="note" id="cExpNote"></span></h3><div class="bars" id="cExp"></div></div>
+        <div class="panel"><h3>Herd make-up <span class="note">as of 10 Oct</span></h3><div id="cHerd"></div></div>
+        <div class="panel"><h3>Breeding status of cows and heifers <span class="note">as of 10 Oct</span></h3><div class="bars" id="cBreed"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="compare">
+    <div class="sec-h"><h2>Compare two days <span class="ta">இரு நாட்கள் ஒப்பீடு</span></h2><p>Pick any two days from 10 Sep to 10 Oct and choose what to compare</p></div>
+    <div class="grid">
+      <div class="panel">
+        <div class="cmp-days">
+          <label class="a" for="cmpA">Day A<select id="cmpA"></select></label>
+          <button class="btn" id="cmpSwap" type="button" aria-label="Swap day A and day B">Swap days</button>
+          <label class="b" for="cmpB">Day B<select id="cmpB"></select></label>
+        </div>
+        <div class="presets" id="cmpPresets"></div>
+        <fieldset class="cmp-pick">
+          <legend>What to compare <span class="qsel" id="cmpQuick"></span></legend>
+          <div class="pick-groups" id="cmpPick"></div>
+        </fieldset>
+      </div>
+      <div class="panel"><h3 id="cmpTitle">Day A vs Day B</h3><div class="headline" id="cmpHead"></div><div class="tbl" id="cmpTbl"></div></div>
+      <div class="grid g-2c">
+        <div class="panel" id="cmpCowsP"><h3>Each cow <span class="note">biggest drop first</span></h3><div class="tbl" id="cmpCows"></div></div>
+        <div class="panel" id="cmpDiaryP"><h3>Farm diary on both days</h3><div class="grid g-2c" id="cmpDiary"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="daily">
+    <div class="sec-h"><h2>Day by day <span class="ta">தினசரி பதிவு</span></h2><p>Every day from 10 Sep to 10 Oct 2026 · tap a day to see it across the dashboard</p></div>
+    <div class="panel"><div class="tbl" id="dayTbl"></div></div>
+  </section>
+
+  <section id="milk">
+    <div class="sec-h"><h2>Milk <span class="ta">பால்</span></h2><p id="milkNote"></p></div>
+    <div class="grid g-2b">
+      <div class="panel">
+        <h3>Daily milk, litres <span class="note">tap or hover a day</span></h3>
+        <div class="chart" id="milkChart"></div>
+        <div class="legend"><span><i style="background:var(--accent)"></i>Daily total</span><span><i style="background:var(--gold)"></i>7-day average</span></div>
+        <div class="sparks" id="sparks"></div>
+      </div>
+      <div class="panel">
+        <h3><span id="cowBarsT">Average litres per cow per day</span> <span class="note">tap a cow for her card</span></h3>
+        <div class="bars" id="cowBars"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="breeding">
+    <div class="sec-h"><h2>Herd and breeding <span class="ta">இனப்பெருக்கம்</span></h2><p>Target: one calf per cow every 12–13 months</p></div>
+    <div class="panel"><div class="tbl" id="breedTbl"></div></div>
+  </section>
+
+  <section id="health">
+    <div class="sec-h"><h2>Health and vaccination <span class="ta">சுகாதாரம் · தடுப்பூசி</span></h2><p>Next due date per animal, from sheet 6</p></div>
+    <div class="grid g-2b">
+      <div class="panel">
+        <h3>Vaccination and deworming status
+          <span class="note"><span class="dot good"></span> done &nbsp;<span class="dot warn"></span> due in 30 days &nbsp;<span class="dot bad"></span> overdue</span></h3>
+        <div class="tbl" id="vaccTbl"></div>
+      </div>
+      <div class="panel">
+        <h3>Treatments <span class="note">latest first</span></h3>
+        <div id="healthList"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="money">
+    <div class="sec-h"><h2>Money <span class="ta">வருமானம் · செலவு</span></h2><p id="moneyNote"></p></div>
+    <div class="grid g-2b">
+      <div class="panel">
+        <h3>Income and expenses by day <span class="note">tap a day to select it</span></h3>
+        <div class="chart" id="monthChart"></div>
+        <div class="legend"><span><i style="background:var(--accent)"></i>Milk value + other income</span><span><i style="background:var(--gold)"></i>Expenses</span></div>
+      </div>
+      <div class="panel">
+        <h3>Where the money went <span class="note" id="expNote"></span></h3>
+        <div class="bars" id="expBars"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="calves">
+    <div class="sec-h"><h2>Calves <span class="ta">கன்றுகள்</span></h2><p>Birth weight, colostrum and growth from sheet 8</p></div>
+    <div class="grid">
+      <div class="panel"><div class="tbl" id="calfTbl"></div></div>
+    </div>
+  </section>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" hidden aria-modal="true" role="dialog"></aside>
+<div class="drop" id="drop" hidden>Drop the workbook to load it</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+"use strict";
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const DAY = 864e5;
+const sod = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const WIN_START = new Date(2026, 8, 10), WIN_END = new Date(2026, 9, 10);
+const TODAY = WIN_END; /* everything is worked out as of 10 Oct 2026 */
+const inWin = d => !!d && d >= WIN_START && d <= WIN_END;
+const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const dd = (a, b) => Math.round((sod(a) - sod(b)) / DAY);
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const pad = n => String(n).padStart(2, "0");
+const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+const fmtD = d => d ? d.getDate() + " " + MON[d.getMonth()] : "-";
+const fmtDY = d => d ? d.getDate() + " " + MON[d.getMonth()] + " " + d.getFullYear() : "-";
+const dmy = d => pad(d.getDate()) + "-" + pad(d.getMonth() + 1) + "-" + d.getFullYear();
+const mkey = d => d.getFullYear() + "-" + pad(d.getMonth() + 1);
+const mlabel = k => { const p = k.split("-"); return MON[+p[1] - 1] + " " + p[0]; };
+const inr = v => (v < 0 ? "−₹" : "₹") + Math.round(Math.abs(v)).toLocaleString("en-IN");
+const inrK = v => { const a = Math.abs(v), s = v < 0 ? "−" : ""; if (a >= 1e5) return s + "₹" + (a / 1e5).toFixed(2) + "L"; if (a >= 1e3) return s + "₹" + (a / 1e3).toFixed(a >= 1e4 ? 0 : 1) + "k"; return s + "₹" + Math.round(a); };
+const n1 = (v, dp = 1) => (v == null || !isFinite(v)) ? "-" : v.toLocaleString("en-IN", { maximumFractionDigits: dp, minimumFractionDigits: dp });
+const n0 = v => (v == null || !isFinite(v)) ? "-" : Math.round(v).toLocaleString("en-IN");
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const sum = (a, f) => a.reduce((s, x) => s + ((f ? f(x) : x) || 0), 0);
+const groupBy = (a, f) => a.reduce((m, x) => { const k = f(x); (m[k] || (m[k] = [])).push(x); return m; }, {});
+const maxDate = a => a.filter(Boolean).reduce((m, d) => (!m || d > m ? d : m), null);
+const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+const norm = v => String(v == null ? "" : v).trim();
+
+function toDate(v) {
+  if (v == null || v === "") return null;
+  if (v instanceof Date) return isNaN(v) ? null : sod(v);
+  if (typeof v === "number") {
+    if (v < 20000 || v > 80000) return null;
+    const u = new Date(Math.round((v - 25569) * 86400) * 1000);
+    return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate());
+  }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})$/);
+  if (m) { let y = +m[3]; if (y < 100) y += 2000; const d = new Date(y, +m[2] - 1, +m[1]); return isNaN(d) ? null : d; }
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  return null;
+}
+function toNum(v) {
+  if (v == null || v === "") return null;
+  if (typeof v === "number") return isFinite(v) ? v : null;
+  const x = parseFloat(String(v).replace(/[₹,\s]/g, ""));
+  return isFinite(x) ? x : null;
+}
+function dateList(v) {
+  if (v == null || v === "") return [];
+  if (typeof v === "number" || v instanceof Date) { const d = toDate(v); return d ? [d] : []; }
+  return String(v).split(/[,;\n&]+|\s+and\s+/).map(s => toDate(s.trim())).filter(Boolean);
+}
+
+/* ---------- sample data (clearly labelled, relative to today) ---------- */
+function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function makeSample() {
+  const R = rng(11), T = TODAY, A = n => addDays(T, -n), r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
+  const cows = [
+    { tag: "TN-2041", name: "Lakshmi", species: "Cow", breed: "HF cross", age: 2190, calved: 70, peak: 16, src: "Purchased" },
+    { tag: "TN-2042", name: "Kaveri", species: "Cow", breed: "HF cross", age: 2560, calved: 150, peak: 15, src: "Purchased" },
+    { tag: "TN-2043", name: "Ganga", species: "Cow", breed: "Jersey cross", age: 1460, calved: 40, peak: 12, src: "Born on farm" },
+    { tag: "TN-2044", name: "Meenakshi", species: "Cow", breed: "Jersey cross", age: 1830, calved: 240, peak: 11, src: "Born on farm" },
+    { tag: "TN-2045", name: "Selvi", species: "Cow", breed: "HF cross", age: 2200, calved: 300, peak: 14, src: "Purchased" },
+    { tag: "TN-2046", name: "Ponni", species: "Buffalo", breed: "Murrah", age: 2300, calved: 120, peak: 9, src: "Purchased" },
+    { tag: "TN-2047", name: "Vaigai", species: "Cow", breed: "Kangayam", age: 2900, calved: 200, peak: 5, src: "Born on farm" },
+    { tag: "TN-2048", name: "Thamarai", species: "Cow", breed: "HF cross", age: 1900, calved: 380, peak: 15, dryAgo: 45, src: "Purchased" }
+  ];
+  const D = emptyData();
+  D.farm = "Sample farm";
+  cows.forEach((c, i) => D.herd.push({ tag: c.tag, name: c.name, species: c.species, breed: c.breed, sex: "F", dob: A(c.age), source: c.src,
+    price: c.src === "Purchased" ? 58000 + i * 2500 : null, insTill: i === 0 ? addDays(T, 25) : addDays(T, 120 + i * 20) }));
+  D.herd.push({ tag: "TN-2049", name: "Rani", species: "Cow", breed: "HF cross", sex: "F", dob: A(670), source: "Born on farm" });
+  D.herd.push({ tag: "C-31", name: "", species: "Cow", breed: "HF cross", sex: "F", dob: A(70), source: "Born on farm" });
+  D.herd.push({ tag: "C-32", name: "", species: "Cow", breed: "Jersey cross", sex: "M", dob: A(40), source: "Born on farm" });
+  D.herd.push({ tag: "C-29", name: "", species: "Cow", breed: "HF cross", sex: "M", dob: A(150), source: "Born on farm" });
+
+  // milk + sales
+  const cyc = {};
+  for (let n = 120; n >= 0; n--) {
+    const d = A(n); let am = 0, pm = 0, inMilk = 0;
+    cows.forEach(c => {
+      const t = dd(d, A(c.calved)); if (t < 1) return; if (c.dryAgo && n <= c.dryAgo) return;
+      let y = c.peak * Math.pow(t / 50, 0.25) * Math.exp(-0.0045 * (t - 50));
+      let rem = "";
+      if (c.name === "Ganga" && n <= 3) { y *= 0.6; rem = "Low yield, fever"; }
+      if (c.name === "Kaveri" && n <= 20 && n >= 14) { y *= 0.65; if (n === 20) rem = "Clots in milk"; }
+      y *= 1 + (R() * 2 - 1) * 0.05;
+      const a = r1(y * 0.56), p = r1(y * 0.44);
+      am += a; pm += p; inMilk++;
+      D.milk.push({ date: d, tag: c.tag, name: c.name, am: a, pm: p, conc: Math.max(1.5, Math.round(y / 2.5 * 2) / 2), remarks: rem });
+    });
+    const dm = d.getDate(), ck = mkey(d) + "-" + (dm <= 10 ? 1 : dm <= 20 ? 2 : 3);
+    [["M", am - 1], ["E", pm - 0.5]].forEach(([sh, l]) => {
+      const fat = r2(3.75 + R() * 0.45 - (n < 20 ? 0.12 : 0)), snf = r2(8.35 + R() * 0.3);
+      const rate = r2(32 + (fat - 3.5) * 4 + (snf - 8.5) * 3), litres = r1(l);
+      const row = { date: d, shift: sh, litres, fat, snf, rate, amount: r2(litres * rate), buyer: "Village society", paidDate: null, received: null };
+      D.sales.push(row); (cyc[ck] || (cyc[ck] = [])).push(row);
+    });
+    // feed
+    const others = cows.length - inMilk + 1;
+    const conc = sum(D.milk.filter(m => +m.date === +d), m => m.conc) + others * 1.5;
+    const f = { date: d, green: inMilk * 25 + others * 20, dry: (inMilk + others) * 5, conc: r1(conc), mineral: (inMilk + others) * 50, silage: null, item: "", qty: "", cost: null };
+    if (n % 8 === 0) { f.item = "Cattle feed (50 kg bag)"; f.qty = "5 bags"; f.cost = 7250; D.finance.push({ date: d, particulars: "Cattle feed, 5 bags", category: "Feed", income: null, expense: 7250 }); }
+    if (n % 30 === 12) { f.item = "Paddy straw"; f.qty = "1 load"; f.cost = 4500; D.finance.push({ date: d, particulars: "Paddy straw, 1 load", category: "Fodder", income: null, expense: 4500 }); }
+    if (n % 30 === 20) { f.item = "Mineral mixture"; f.qty = "5 kg"; f.cost = 650; D.finance.push({ date: d, particulars: "Mineral mixture 5 kg", category: "Feed", income: null, expense: 650 }); }
+    D.feed.push(f);
+    if (dm === 1) {
+      D.labour.push({ date: d, worker: "Murugan", work: "Milking, feeding, shed cleaning", days: 30, rate: 300, amount: 9000 });
+      D.finance.push({ date: d, particulars: "Wages – Murugan", category: "Labour", income: null, expense: 9000 });
+    }
+    if (dm === 5) D.finance.push({ date: d, particulars: "EB bill (shed, chaff cutter)", category: "Electricity", income: null, expense: 850 });
+    if (dm === 8) D.finance.push({ date: d, particulars: "Fertiliser for CO-4 fodder plot", category: "Fodder", income: null, expense: 1200 });
+    if (dm === 15) D.finance.push({ date: d, particulars: "Dung sale – 1 tractor load", category: "Dung / manure sale", income: 1800, expense: null });
+  }
+  Object.keys(cyc).forEach(k => {
+    const rows = cyc[k], last = rows[rows.length - 1], end = last.date, pay = addDays(end, 5);
+    const tot = Math.round(sum(rows, r => r.amount));
+    const lastDay = end.getDate(); const isEnd = lastDay === 10 || lastDay === 20 || addDays(end, 1).getDate() === 1;
+    if (isEnd && pay <= TODAY) { last.paidDate = pay; last.received = tot; D.finance.push({ date: pay, particulars: "Milk payment – society (" + fmtD(rows[0].date) + "–" + fmtD(end) + ")", category: "Milk sale", income: tot, expense: null }); }
+  });
+  D.finance.push({ date: A(30), particulars: "Male calf C-29 sold", category: "Animal / calf sale", income: 6000, expense: null });
+
+  // breeding
+  const B = (o) => D.breeding.push(Object.assign({ tag: "", name: "", heat: null, ai: null, bull: "", by: "", repeat: "", pdDate: null, pd: "", calving: null, calfSex: "", calfTag: "" }, o));
+  const g = c => /buff/i.test(c.species) ? 310 : 280;
+  cows.forEach(c => B({ tag: c.tag, name: c.name, ai: A(c.calved + g(c)), bull: c.species === "Buffalo" ? "Murrah 118" : "HF 4521", by: "Govt. Vet. Dispensary", pdDate: A(c.calved + g(c) - 60), pd: "Positive", calving: A(c.calved),
+    calfSex: c.name === "Lakshmi" ? "F" : c.name === "Ganga" || c.name === "Kaveri" ? "M" : "", calfTag: c.name === "Lakshmi" ? "C-31" : c.name === "Ganga" ? "C-32" : c.name === "Kaveri" ? "C-29" : "" }));
+  B({ tag: "TN-2041", name: "Lakshmi", heat: A(8), ai: A(8), bull: "HF 4521", by: "Govt. Vet. Dispensary" });
+  B({ tag: "TN-2042", name: "Kaveri", heat: A(100), ai: A(100), bull: "HF 4521", by: "Govt. Vet. Dispensary", repeat: dmy(A(65)) });
+  B({ tag: "TN-2044", name: "Meenakshi", heat: A(150), ai: A(150), bull: "Jersey 207", by: "Govt. Vet. Dispensary", pdDate: A(90), pd: "Positive" });
+  B({ tag: "TN-2045", name: "Selvi", heat: A(215), ai: A(215), bull: "HF 4521", by: "Govt. Vet. Dispensary", pdDate: A(150), pd: "Positive" });
+  B({ tag: "TN-2047", name: "Vaigai", heat: A(110), ai: A(110), bull: "Kangayam 12", by: "Govt. Vet. Dispensary", repeat: dmy(A(88)) + ", " + dmy(A(66)), pdDate: A(20), pd: "Negative" });
+  B({ tag: "TN-2048", name: "Thamarai", heat: A(265), ai: A(265), bull: "HF 4521", by: "Govt. Vet. Dispensary", pdDate: A(200), pd: "Positive" });
+
+  // health
+  D.health.push({ date: A(2), tag: "TN-2043", name: "Ganga", symptoms: "High fever, off feed, ticks seen", diagnosis: "Suspected theileriosis (tick fever)", vet: "Govt. Vet. Dispensary", medicine: "Anti-theilerial injection (as prescribed)", days: 3, withdrawal: addDays(T, 5), cost: 1200, outcome: "Under treatment" });
+  D.health.push({ date: A(10), tag: "C-31", name: "", symptoms: "Loose dung, weak", diagnosis: "Calf scours", vet: "Govt. Vet. Dispensary", medicine: "ORS + medicine (as prescribed)", days: 3, withdrawal: null, cost: 250, outcome: "Recovered" });
+  D.health.push({ date: A(20), tag: "TN-2042", name: "Kaveri", symptoms: "Swollen hind quarter, clots in milk", diagnosis: "Clinical mastitis", vet: "Govt. Vet. Dispensary", medicine: "Intramammary tubes (as prescribed)", days: 4, withdrawal: A(13), cost: 850, outcome: "Recovered" });
+  D.health.push({ date: A(45), tag: "TN-2041", name: "Lakshmi", symptoms: "Left side bloated after lush green fodder", diagnosis: "Mild bloat", vet: "Govt. Vet. Dispensary", medicine: "Anti-bloat drench", days: 1, withdrawal: null, cost: 300, outcome: "Recovered" });
+  D.health.push({ date: A(60), tag: "TN-2046", name: "Ponni", symptoms: "Not coming to heat after calving", diagnosis: "Anoestrus", vet: "Govt. Vet. Dispensary", medicine: "Mineral mixture, review in 30 days", days: 1, withdrawal: null, cost: 400, outcome: "Referred" });
+  D.health.forEach(h => D.finance.push({ date: h.date, particulars: "Treatment – " + (h.name || h.tag), category: "Medicine", income: null, expense: h.cost }));
+  [[A(8)], [A(100)], [A(65)], [A(88)], [A(66)], [A(110)]].forEach(([d]) => { if (dd(TODAY, d) <= 120) D.finance.push({ date: d, particulars: "AI charges", category: "Vet & AI fees", income: null, expense: 150 }); });
+
+  // vaccination
+  const adults = cows.concat([{ tag: "TN-2049", name: "Rani" }]);
+  adults.forEach(c => {
+    D.vacc.push({ tag: c.tag, name: c.name, vaccine: "FMD vaccine", disease: "Foot and mouth disease (FMD)", due: A(172), given: A(172), next: addDays(A(172), 180) });
+    D.vacc.push({ tag: c.tag, name: c.name, vaccine: "HS vaccine", disease: "Haemorrhagic septicaemia (HS)", due: A(150), given: A(150), next: addDays(A(150), 365) });
+    D.vacc.push({ tag: c.tag, name: c.name, vaccine: "BQ vaccine", disease: "Black quarter (BQ)", due: A(150), given: A(150), next: addDays(A(150), 365) });
+    D.vacc.push({ tag: c.tag, name: c.name, vaccine: "LSD vaccine", disease: "Lumpy skin disease", due: A(300), given: A(300), next: addDays(A(300), 365) });
+    D.vacc.push({ tag: c.tag, name: c.name, vaccine: "Dewormer", disease: "Internal parasites", due: A(100), given: A(100), next: A(10) });
+  });
+  D.vacc.push({ tag: "C-31", name: "", vaccine: "Dewormer", disease: "Internal parasites", due: A(60), given: A(60), next: A(30) });
+  D.vacc.push({ tag: "C-32", name: "", vaccine: "Dewormer", disease: "Internal parasites", due: A(30), given: A(30), next: T });
+
+  // calves, disposal
+  D.calves.push({ tag: "C-31", dam: "TN-2041", dob: A(70), sex: "F", bw: 30, colostrum: "Yes", navel: "Yes", deworm: dmy(A(60)), w3: null, wean: null, w6: null });
+  D.calves.push({ tag: "C-32", dam: "TN-2043", dob: A(40), sex: "M", bw: 24, colostrum: "No", navel: "Yes", deworm: dmy(A(30)), w3: null, wean: null, w6: null });
+  D.disposal.push({ date: A(30), tag: "C-29", name: "", age: "4 months", reason: "Surplus male calf", method: "Local buyer", amount: 6000 });
+  return D;
+}
+function emptyData() { return { farm: "", herd: [], milk: [], sales: [], breeding: [], health: [], vacc: [], feed: [], calves: [], finance: [], labour: [], disposal: [] }; }
+
+/* ---------- workbook parsing ---------- */
+const SHEETS = {
+  herd: { p: "1 herd", h: "ear tag", cols: ["tag", "name", "species", "breed", "sex", "dob", "sire", "dam", "source", "purchaseDate", "price", "policy", "insTill", "remarks"], dates: ["dob", "purchaseDate", "insTill"], nums: ["price"], need: r => r.tag || r.name },
+  milk: { p: "2 milk", h: "date", cols: ["date", "tag", "name", "am", "pm", "total", "conc", "remarks"], dates: ["date"], nums: ["am", "pm", "total", "conc"], need: r => r.date && (r.am != null || r.pm != null || r.total != null) },
+  sales: { p: "3 milk", h: "date", cols: ["date", "shift", "litres", "fat", "snf", "rate", "amount", "buyer", "paidDate", "received", "remarks"], dates: ["date", "paidDate"], nums: ["litres", "fat", "snf", "rate", "amount", "received"], need: r => r.date && (r.litres != null || r.amount != null || r.received != null) },
+  breeding: { p: "4 breed", h: "cow tag", cols: ["tag", "name", "heat", "ai", "bull", "by", "repeat", "pdDate", "pd", "exp", "dryOff", "calving", "calfSex", "calfTag", "notes"], dates: ["heat", "ai", "pdDate", "exp", "dryOff", "calving"], raw: ["repeat"], nums: [], need: r => (r.tag || r.name) && (r.ai || r.heat || r.calving || r.repeat) },
+  health: { p: "5 health", h: "date", cols: ["date", "tag", "name", "symptoms", "diagnosis", "vet", "medicine", "days", "withdrawal", "cost", "outcome"], dates: ["date", "withdrawal"], nums: ["days", "cost"], need: r => r.date && (r.tag || r.name) },
+  vacc: { p: "6 vacc", h: "cow tag", cols: ["tag", "name", "vaccine", "disease", "due", "given", "batch", "by", "next", "remarks"], dates: ["due", "given", "next"], nums: [], need: r => (r.tag || r.name) && (r.vaccine || r.disease) },
+  feed: { p: "7 feed", h: "date", cols: ["date", "green", "dry", "conc", "mineral", "silage", "item", "qty", "cost", "stock", "remarks"], dates: ["date"], nums: ["green", "dry", "conc", "mineral", "silage", "cost"], need: r => r.date },
+  calves: { p: "8 calf", h: "calf tag", cols: ["tag", "dam", "dob", "sex", "bw", "colostrum", "navel", "deworm", "w3", "wean", "w6", "remarks"], dates: ["dob", "wean"], nums: ["bw", "w3", "w6"], raw: ["deworm"], need: r => r.tag || r.dob },
+  finance: { p: "9 income", h: "date", cols: ["date", "particulars", "category", "income", "expense", "by", "bill"], dates: ["date"], nums: ["income", "expense"], need: r => r.date && (r.income != null || r.expense != null) },
+  labour: { p: "10 labour", h: "date", cols: ["date", "worker", "work", "days", "rate", "amount", "sign"], dates: ["date"], nums: ["days", "rate", "amount"], need: r => r.date && (r.amount != null || (r.days != null && r.rate != null)) },
+  disposal: { p: "12 dispos", h: "date", cols: ["date", "tag", "name", "age", "reason", "method", "amount", "claim", "claimDate", "pm"], dates: ["date", "claimDate"], nums: ["amount"], need: r => r.date && (r.tag || r.name) }
+};
+function parseWorkbook(wb) {
+  const D = emptyData(); let found = 0;
+  const find = p => wb.SheetNames.find(n => n.trim().toLowerCase().replace(/\s+/g, " ").startsWith(p));
+  const idx = wb.SheetNames.find(n => /^index/i.test(n.trim()));
+  if (idx) { const v = wb.Sheets[idx]["B4"]; if (v && v.v) D.farm = String(v.v).trim(); }
+  Object.entries(SHEETS).forEach(([key, cfg]) => {
+    const name = find(cfg.p); if (!name) return; found++;
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: false });
+    let h = rows.findIndex((r, i) => i < 15 && r && String(r[0] || "").trim().toLowerCase().startsWith(cfg.h));
+    if (h < 0) h = 4;
+    for (let i = h + 1; i < rows.length; i++) {
+      const r = rows[i]; if (!r) continue;
+      const first = String(r[0] == null ? "" : r[0]).trim().toUpperCase();
+      if (first.startsWith("TOTAL") || first.startsWith("NET PROFIT")) continue;
+      const o = {};
+      cfg.cols.forEach((c, j) => {
+        const v = r[j];
+        if (cfg.dates.includes(c)) o[c] = toDate(v);
+        else if (cfg.nums.includes(c)) o[c] = toNum(v);
+        else if (cfg.raw && cfg.raw.includes(c)) o[c] = v;
+        else o[c] = v == null ? "" : String(v).trim();
+      });
+      if (cfg.need(o)) D[key].push(o);
+    }
+  });
+  if (!found) throw new Error("nosheets");
+  return D;
+}
+
+/* ---------- model ---------- */
+let M = null;
+function build(D0) {
+  const D = Object.assign({}, D0);
+  ["milk", "sales", "feed", "finance", "labour", "health", "disposal"].forEach(k => D[k] = (D0[k] || []).filter(r => inWin(r.date)));
+  const A = new Map(), byName = new Map();
+  const disposed = new Set(D.disposal.map(r => norm(r.tag) || norm(r.name)).filter(Boolean));
+  D.herd.forEach(h => {
+    const k = norm(h.tag) || norm(h.name); if (!k) return;
+    A.set(k, { key: k, tag: norm(h.tag), name: norm(h.name) || norm(h.tag), species: h.species || "", breed: h.breed || "", sex: norm(h.sex).toUpperCase(), dob: h.dob, insTill: h.insTill, fromHerd: true });
+    if (norm(h.name)) byName.set(norm(h.name).toLowerCase(), k);
+  });
+  const keyFor = (tag, name) => {
+    tag = norm(tag); name = norm(name);
+    if (tag && A.has(tag)) return tag;
+    if (name && byName.has(name.toLowerCase())) return byName.get(name.toLowerCase());
+    const k = tag || name; if (!k) return null;
+    if (!A.has(k)) { A.set(k, { key: k, tag, name: name || tag, species: "", breed: "", sex: "", dob: null }); if (name) byName.set(name.toLowerCase(), k); }
+    return k;
+  };
+  D.calves.forEach(c => { const k = keyFor(c.tag, ""); if (!k) return; const a = A.get(k); if (!a.dob) a.dob = c.dob; if (!a.sex) a.sex = norm(c.sex).toUpperCase(); a.isCalfReg = true; c.key = k; c.damKey = keyFor(c.dam, ""); });
+  D.milk.forEach(m => { m.key = keyFor(m.tag, m.name); m.tot = m.am != null || m.pm != null ? (m.am || 0) + (m.pm || 0) : (m.total || 0); });
+  ["breeding", "health", "vacc"].forEach(s => D[s].forEach(r => r.key = keyFor(r.tag, r.name)));
+
+  const milkBy = groupBy(D.milk.filter(m => m.key), m => m.key);
+  const brBy = groupBy(D.breeding.filter(r => r.key), r => r.key);
+  const calvesByDam = groupBy(D.calves.filter(c => c.damKey), c => c.damKey);
+  const dataEnd = maxDate(D.milk.map(m => m.date)) || TODAY;
+
+  // daily totals
+  const daily = {};
+  D.milk.forEach(m => { const k = ymd(m.date); const o = daily[k] || (daily[k] = { date: m.date, total: 0, am: 0, pm: 0, cows: 0 }); o.total += m.tot; o.am += m.am || 0; o.pm += m.pm || 0; o.cows++; });
+  const days = Object.values(daily).sort((a, b) => a.date - b.date);
+  days.forEach(d => { const from = addDays(d.date, -6); const w = days.filter(x => x.date >= from && x.date <= d.date); d.avg7 = sum(w, x => x.total) / w.length; });
+
+  const animals = [];
+  A.forEach(a => {
+    a.disposed = disposed.has(a.tag) || disposed.has(a.key);
+    a.milk = (milkBy[a.key] || []).sort((x, y) => x.date - y.date);
+    a.lastMilk = a.milk.length ? a.milk[a.milk.length - 1].date : null;
+    a.ageD = a.dob ? dd(TODAY, a.dob) : null;
+    a.inMilk = !!a.lastMilk && dd(dataEnd, a.lastMilk) <= 3;
+    const w7 = a.milk.filter(m => dd(dataEnd, m.date) < 7);
+    a.avg7 = w7.length ? sum(w7, m => m.tot) / w7.length : null;
+    a.isBuffalo = /buff|murrah/i.test(a.species + " " + a.breed);
+    a.br = breedingStatus(a, brBy[a.key] || [], calvesByDam[a.key] || []);
+    if (a.sex === "M") a.kind = (a.ageD != null && a.ageD > 730) ? "bull" : "calf";
+    else if (a.ageD != null && a.ageD < 365 && !a.milk.length) a.kind = "calf";
+    else if (!a.br.lastCalving && !a.milk.length && a.ageD != null) a.kind = "heifer";
+    else a.kind = "cow";
+    if (a.kind === "heifer") a.br = heiferStatus(a, brBy[a.key] || []);
+    animals.push(a);
+  });
+  const active = animals.filter(a => !a.disposed);
+  return { D, A, animals, active, days, daily, dataEnd, hasMilk: D.milk.length > 0 };
+}
+function gestation(a) { return a.isBuffalo ? 310 : 280; }
+const POS = /pos|\+ve|^\+|yes|preg|confirm/i, NEG = /neg|-ve|^-|^no|empty|open|not/i;
+
+function servicesOf(rows, after) {
+  const out = [];
+  rows.forEach(r => { [r.ai].concat(dateList(r.repeat)).filter(Boolean).forEach(d => { if (!after || d > after) out.push({ d, row: r }); }); });
+  return out.sort((x, y) => x.d - y.d);
+}
+function breedingStatus(a, rows, calves) {
+  const lastCalving = maxDate(rows.map(r => r.calving).concat(calves.map(c => c.dob)));
+  const sv = servicesOf(rows, lastCalving), S = sv.length ? sv[sv.length - 1].d : null;
+  const g = gestation(a);
+  const st = { lastCalving, lastService: S, services: sv.length, pregnant: false, exp: null, dryOff: null, events: [], tone: "neutral", label: "No breeding record", alert: null };
+  st.dim = lastCalving ? dd(TODAY, lastCalving) : null;
+  let pd = "";
+  if (S) { const row = sv[sv.length - 1].row; if (row.pd && (!row.pdDate || row.pdDate >= S)) pd = String(row.pd); }
+  const nm = a.name || a.tag;
+  if (S && POS.test(pd)) {
+    st.pregnant = true; st.exp = addDays(S, g); st.dryOff = addDays(st.exp, -60);
+    const toCalve = dd(st.exp, TODAY), mo = Math.floor(dd(TODAY, S) / 30.4);
+    if (toCalve < -10) { st.label = "Calving date passed"; st.tone = "warn"; st.alert = { lv: "warn", t: nm + ": expected calving " + fmtD(st.exp) + " has passed", p: "Enter the actual calving date in sheet 4, or re-check the pregnancy with your vet." }; }
+    else if (TODAY >= st.dryOff) {
+      if (a.inMilk) { st.label = "Dry-off overdue"; st.tone = "warn"; st.alert = { lv: "warn", t: "Dry off " + nm + " now", p: "Calving is due " + fmtD(st.exp) + ". She needs about 60 dry days to rebuild udder and body condition." }; }
+      else { st.label = "Dry · calves " + fmtD(st.exp); st.tone = "info"; }
+    } else { st.label = "Pregnant · " + mo + " mo"; st.tone = "good"; }
+    if (st.dryOff >= TODAY) st.events.push({ date: st.dryOff, t: "Dry off " + nm, s: "60 days before calving", lv: "warn" });
+    st.events.push({ date: st.exp, t: (a.isBuffalo ? "Buffalo " : "") + nm + " due to calve", s: "Clean calving pen, calving kit, colostrum within 1 hour", lv: "info" });
+    if (toCalve >= 0 && toCalve <= 21 && !st.alert) st.alert = { lv: "warn", t: nm + " calves in " + plural(toCalve, "day"), p: "Move her to a clean, dry calving area by " + fmtD(addDays(st.exp, -7)) + ". Keep the vet's number ready." };
+    else if (TODAY < st.dryOff && dd(st.dryOff, TODAY) <= 10 && !st.alert) st.alert = { lv: "warn", t: "Dry off " + nm + " by " + fmtD(st.dryOff), p: "Calving due " + fmtD(st.exp) + "." };
+  } else if (S && NEG.test(pd)) {
+    if (sv.length >= 3) { st.label = "Repeat breeder · " + sv.length + " AI"; st.tone = "bad"; st.alert = { lv: "bad", t: nm + " is a repeat breeder", p: plural(sv.length, "insemination") + " since calving without conception. Ask the vet to examine her; check mineral mixture and body condition." }; }
+    else { st.label = "Not pregnant · re-breed"; st.tone = "warn"; st.alert = { lv: "warn", t: nm + " is not pregnant", p: "Watch for heat every 21 days and inseminate 12–18 hours after heat starts." }; }
+  } else if (S) {
+    const k = dd(TODAY, S);
+    st.label = "AI done " + k + " d ago"; st.tone = "info";
+    if (k <= 25) { st.events.push({ date: addDays(S, 21), t: "Watch " + nm + " for return heat", s: "21 days after AI on " + fmtD(S), lv: "info" }); }
+    const pdDue = addDays(S, 60);
+    if (k >= 60) { st.label = "Pregnancy check due"; st.tone = "warn"; st.alert = { lv: "warn", t: "Pregnancy check due for " + nm, p: "Inseminated on " + fmtD(S) + " (" + k + " days ago). Book a PD with the vet." }; }
+    st.events.push({ date: pdDue, t: "Pregnancy check – " + nm, s: "60 days after AI", lv: "info" });
+  } else if (lastCalving) {
+    const dim = st.dim;
+    if (dim > 90) { st.label = "Not bred · " + dim + " d"; st.tone = "warn"; st.alert = { lv: "warn", t: nm + " not bred " + dim + " days after calving", p: "Target is AI within 60–90 days of calving. Watch for heat closely; consult the vet if she shows no heat." }; }
+    else if (dim >= 45) { st.label = "Ready for AI"; st.tone = "info"; st.events.push({ date: addDays(lastCalving, 90), t: "Breed " + nm + " by this date", s: "90 days after calving", lv: "info" }); }
+    else { st.label = "Fresh · " + dim + " d"; st.tone = "good"; st.events.push({ date: addDays(lastCalving, 60), t: nm + " ready for first AI", s: "60 days after calving", lv: "info" }); }
+  }
+  return st;
+}
+function heiferStatus(a, rows) {
+  const st = breedingStatus(a, rows, []);
+  if (st.lastService) return st;
+  const m = a.ageD / 30.4;
+  st.label = m >= 15 ? "Heifer · ready for first AI" : "Heifer · " + Math.floor(m) + " mo"; st.tone = m >= 15 ? "info" : "neutral";
+  st.alert = m >= 15 ? { lv: "info", t: (a.name || a.tag) + " is " + Math.floor(m) + " months old", p: "Crossbred heifers can be bred at 15–18 months once they reach good body weight. Watch for her first heats." } : null;
+  return st;
+}
+
+/* ---------- period ---------- */
+function periods() { const out = []; for (let d = WIN_START; d <= WIN_END; d = addDays(d, 1)) out.push(ymd(d)); return out; }
+let period = "all";
+function range(p) {
+  if (!p || p === "all") return { start: WIN_START, end: WIN_END, label: "10 Sep – 10 Oct 2026", all: true };
+  const [y, m, d] = p.split("-").map(Number); const x = new Date(y, m - 1, d);
+  return { start: x, end: x, label: WD[x.getDay()] + ", " + fmtDY(x), day: x };
+}
+function dayEvents() {
+  const D = M.D, ev = [], nm = k => { const a = M.A.get(k); return a ? (a.name || a.tag) : k; };
+  D.breeding.forEach(b => {
+    const n = nm(b.key);
+    if (b.heat && (!b.ai || +b.heat !== +b.ai)) ev.push({ date: b.heat, t: "Heat seen – " + n, s: "", c: "info" });
+    if (b.ai) ev.push({ date: b.ai, t: "AI – " + n, s: b.bull ? "Semen " + b.bull : "", c: "info" });
+    dateList(b.repeat).forEach(d => ev.push({ date: d, t: "Repeat AI – " + n, s: b.bull || "", c: "info" }));
+    if (b.pdDate) ev.push({ date: b.pdDate, t: "Pregnancy check – " + n, s: b.pd || "", c: POS.test(b.pd || "") ? "good" : "warn" });
+    if (b.calving) ev.push({ date: b.calving, t: n + " calved", s: [b.calfTag, b.calfSex === "F" ? "female" : b.calfSex === "M" ? "male" : ""].filter(Boolean).join(", "), c: "good" });
+  });
+  D.health.forEach(h => ev.push({ date: h.date, t: "Treatment – " + nm(h.key), s: [h.diagnosis || h.symptoms, h.cost ? inr(h.cost) : ""].filter(Boolean).join(" · "), c: "bad" }));
+  Object.values(groupBy(D.vacc.filter(v => v.given), v => ymd(v.given) + "|" + shortVac(v.disease || v.vaccine))).forEach(l => ev.push({ date: l[0].given, t: shortVac(l[0].disease || l[0].vaccine) + " given – " + plural(l.length, "animal"), s: "", c: "good" }));
+  D.finance.forEach(f => ev.push({ date: f.date, t: f.particulars || f.category || "Entry", s: (f.income ? "+" + inr(f.income) : "−" + inr(f.expense || 0)) + (f.category ? " · " + f.category : ""), c: f.income ? "good" : "neutral", money: true }));
+  D.disposal.forEach(x => ev.push({ date: x.date, t: (nm(x.tag) || x.name) + " – " + (x.reason || "disposed"), s: [x.method, x.amount ? inr(x.amount) : ""].filter(Boolean).join(" · "), c: "neutral" }));
+  return ev.filter(e => inWin(e.date));
+}
+const inR = (d, r) => d && d >= r.start && d <= r.end;
+function stats(r) {
+  const D = M.D;
+  const days = M.days.filter(d => inR(d.date, r));
+  const milk = sum(days, d => d.total), nd = days.length;
+  const cowDays = sum(days, d => d.cows);
+  const sales = D.sales.filter(s => inR(s.date, r));
+  const saleAmt = s => s.amount != null ? s.amount : (s.litres != null && s.rate != null ? s.litres * s.rate : 0);
+  let milkValue = sum(sales, saleAmt);
+  const fin = D.finance.filter(f => inR(f.date, r));
+  const isMilkCat = f => /milk/i.test(f.category || "") || /milk/i.test(f.particulars || "");
+  if (!D.sales.length) milkValue = sum(fin.filter(isMilkCat), f => f.income);
+  const otherIncome = sum(fin.filter(f => !isMilkCat(f)), f => f.income);
+  let expense, expSource, cats;
+  if (D.finance.some(f => f.expense)) {
+    expense = sum(fin, f => f.expense); expSource = "sheet 9";
+    cats = groupBy(fin.filter(f => f.expense), f => f.category || "Other");
+    cats = Object.entries(cats).map(([k, v]) => ({ k, v: sum(v, f => f.expense) }));
+  } else {
+    const fe = sum(D.feed.filter(f => inR(f.date, r)), f => f.cost), he = sum(D.health.filter(h => inR(h.date, r)), h => h.cost), le = sum(D.labour.filter(l => inR(l.date, r)), l => l.amount != null ? l.amount : (l.days || 0) * (l.rate || 0));
+    expense = fe + he + le; expSource = "sheets 5, 7 and 10";
+    cats = [{ k: "Feed", v: fe }, { k: "Medicine", v: he }, { k: "Labour", v: le }].filter(c => c.v);
+  }
+  cats.sort((a, b) => b.v - a.v);
+  const feedCost = sum(cats.filter(c => /feed|fodder/i.test(c.k)), c => c.v);
+  const litresSold = sum(sales, s => s.litres);
+  const fat = litresSold ? sum(sales.filter(s => s.fat != null), s => s.fat * (s.litres || 0)) / sum(sales.filter(s => s.fat != null), s => s.litres || 0) : null;
+  const snf = litresSold ? sum(sales.filter(s => s.snf != null), s => s.snf * (s.litres || 0)) / sum(sales.filter(s => s.snf != null), s => s.litres || 0) : null;
+  return { days, milk, nd, perDay: nd ? milk / nd : null, perCow: cowDays ? milk / cowDays : null, milkValue, otherIncome, expense, expSource, cats, feedCost, profit: milkValue + otherIncome - expense, costPerL: milk ? expense / milk : null, fat, snf, sales };
+}
+
+/* ---------- insights ---------- */
+function insights(r, st) {
+  const out = [], D = M.D, push = (lv, t, p, key) => out.push({ lv, t, p, key });
+  if (!M.hasMilk) push("info", "No milk entries yet", "Fill sheet 2 (Daily Milk Production) and load the workbook to see milk trends.");
+  else {
+    const lag = dd(TODAY, M.dataEnd);
+    if (lag > 3) push("warn", "Milk register last updated " + fmtDY(M.dataEnd), plural(lag, "day") + " without entries. Alerts below use today's date; milk figures stop at " + fmtD(M.dataEnd) + ".");
+    const last7 = M.days.filter(d => dd(M.dataEnd, d.date) < 7), prev7 = M.days.filter(d => { const k = dd(M.dataEnd, d.date); return k >= 7 && k < 14; });
+    if (last7.length >= 4 && prev7.length >= 4) {
+      const a = sum(last7, d => d.total) / last7.length, b = sum(prev7, d => d.total) / prev7.length, ch = (a - b) / b * 100;
+      if (ch <= -8) push("warn", "Herd milk down " + n1(-ch, 0) + "% this week", n1(a) + " L/day against " + n1(b) + " L/day the week before. Check cows marked below, feed changes and drinking water.");
+      else if (ch >= 5) push("good", "Herd milk up " + n1(ch, 0) + "% this week", n1(a) + " L/day against " + n1(b) + " L/day the week before.");
+    }
+    M.active.filter(a => a.inMilk && a.milk.length >= 10).forEach(a => {
+      const l3 = a.milk.filter(m => dd(M.dataEnd, m.date) < 3), p14 = a.milk.filter(m => { const k = dd(M.dataEnd, m.date); return k >= 3 && k < 17; });
+      if (l3.length >= 2 && p14.length >= 5) {
+        const x = sum(l3, m => m.tot) / l3.length, y = sum(p14, m => m.tot) / p14.length, ch = (x - y) / y * 100;
+        if (ch <= -20) push("bad", (a.name || a.tag) + "'s milk fell " + n1(-ch, 0) + "% in 3 days", n1(x) + " L/day against her usual " + n1(y) + " L. Check the udder for mastitis (strip-cup test), temperature, heat signs and appetite.", a.key);
+      }
+    });
+  }
+  D.health.filter(h => h.withdrawal && h.withdrawal >= TODAY).forEach(h => push("bad", "Do not sell " + (M.A.get(h.key)?.name || h.tag || h.name) + "'s milk until " + fmtD(h.withdrawal), (h.diagnosis || "Treatment") + " · " + (h.medicine || "medicine") + ". Milk with drug residue can be rejected by the society.", h.key));
+  D.health.filter(h => /under/i.test(h.outcome || "") && !(h.withdrawal && h.withdrawal >= TODAY)).forEach(h => push("warn", (M.A.get(h.key)?.name || h.tag) + " is under treatment", (h.diagnosis || "") + " since " + fmtD(h.date) + ".", h.key));
+  M.active.forEach(a => { if (a.br.alert && (a.kind === "cow" || a.kind === "heifer")) push(a.br.alert.lv, a.br.alert.t, a.br.alert.p, a.key); });
+  const vs = vaccStatus();
+  const grp = (list) => groupBy(list, x => x.vac);
+  Object.entries(grp(vs.cells.filter(c => c.state === "bad"))).forEach(([v, l]) => push("bad", v + " overdue for " + plural(l.length, "animal"), "Due since " + fmtD(minD(l.map(x => x.next))) + ": " + names(l) + ". Contact the veterinary dispensary."));
+  Object.entries(grp(vs.cells.filter(c => c.state === "warn"))).forEach(([v, l]) => push("warn", v + " due for " + plural(l.length, "animal"), "By " + fmtD(minD(l.map(x => x.next))) + ": " + names(l) + "."));
+  M.active.filter(a => a.insTill && dd(a.insTill, TODAY) >= 0 && dd(a.insTill, TODAY) <= 30).forEach(a => push("warn", "Renew insurance for " + (a.name || a.tag), "Policy ends " + fmtD(a.insTill) + ". Claims need the ear tag and a valid policy.", a.key));
+  // payments
+  if (D.sales.length) {
+    const paid = D.sales.filter(s => s.received);
+    if (paid.length) {
+      const lastPaid = maxDate(paid.map(s => s.date)), un = D.sales.filter(s => s.date > lastPaid);
+      const due = sum(un, s => s.amount != null ? s.amount : (s.litres || 0) * (s.rate || 0));
+      if (due > 0) { const age = dd(TODAY, un[0].date); push(age > 15 ? "warn" : "info", inr(due) + " milk payment pending", "Milk supplied from " + fmtD(un[0].date) + " is not yet marked as received in sheet 3."); }
+    }
+  }
+  if (st.fat != null && st.fat < 3.5) push("warn", "Average fat is " + n1(st.fat, 2) + "%", "Low fat lowers the rate per litre. Give enough dry fodder (paddy straw) along with green fodder, and mineral mixture daily.");
+  if (st.snf != null && st.snf < 8.3) push("warn", "Average SNF is " + n1(st.snf, 2) + "%", "Low SNF lowers the rate. Check concentrate quantity, mineral mixture and that milk is not diluted at the collection point.");
+  if (st.milkValue > 0 && st.feedCost > 0) {
+    const sh = st.feedCost / st.milkValue * 100;
+    if (sh > 65) push("bad", "Feed takes " + n1(sh, 0) + "% of milk value", "Feed above about two-thirds of milk income leaves little margin. Grow CO-4/CO-5 fodder, feed concentrate by yield, and review low-yield cows.");
+    else push("good", "Feed is " + n1(sh, 0) + "% of milk value", "Feed and fodder cost " + inr(st.feedCost) + " against " + inr(st.milkValue) + " of milk in " + r.label + ".");
+  }
+  if (st.milkValue + st.otherIncome > 0 && st.profit < 0) push("bad", "Loss of " + inr(-st.profit) + " in " + r.label, "Expenses were higher than income. Look at the biggest expense in Money and at cows giving the least milk.");
+  if (st.perCow) {
+    const ranked = cowRank(r);
+    ranked.filter(c => c.avg < st.perCow * 0.5 && c.days >= 5).forEach(c => push("info", (c.a.name || c.a.tag) + " gives " + n1(c.avg) + " L/day", "Less than half the herd average of " + n1(st.perCow) + " L. Check whether her milk covers her feed cost.", c.a.key));
+  }
+  D.calves.filter(c => c.dob && dd(TODAY, c.dob) <= 90 && /^n/i.test(c.colostrum || "")).forEach(c => push("info", "Calf " + c.tag + " missed colostrum in the first hour", "Watch closely for scours and weakness for the first 3 months; keep the shed dry."));
+  const mo = TODAY.getMonth();
+  if (mo >= 9 && mo <= 11) push("info", "North-east monsoon: tick fever and mastitis season", "Keep floors dry, spray for ticks every 2–3 weeks, dip teats after milking, and keep dry fodder stocked for wet days.");
+  else if (mo >= 2 && mo <= 5) push("info", "Summer: plan fodder and cooling", "Green fodder runs short till June. Stock paddy straw or silage, give cool water 4–5 times a day, and wet the cows at noon.");
+  else if (mo >= 6 && mo <= 8) push("info", "Before the north-east monsoon", "Plant CO-4/CO-5 fodder slips now and finish HS and BQ vaccination before October rains.");
+  const order = { bad: 0, warn: 1, info: 2, good: 3 };
+  return out.sort((a, b) => order[a.lv] - order[b.lv]);
+}
+const minD = a => a.filter(Boolean).reduce((m, d) => (!m || d < m ? d : m), null);
+const names = l => { const n = l.map(x => x.name); return n.length > 5 ? n.slice(0, 5).join(", ") + " and " + (n.length - 5) + " more" : n.join(", "); };
+
+/* ---------- vaccination ---------- */
+function vaccStatus() {
+  const D = M.D; const by = {};
+  D.vacc.forEach(v => {
+    const a = M.A.get(v.key); if (a && a.disposed) return;
+    const vac = shortVac(v.disease || v.vaccine), k = v.key + "|" + vac;
+    const cur = by[k]; const when = v.given || v.due;
+    if (!cur || (when && (!cur.when || when > cur.when))) by[k] = { key: v.key, vac, when, given: v.given, next: v.given ? (v.next || null) : v.due, name: a ? (a.name || a.tag) : (v.name || v.tag) };
+  });
+  const cells = Object.values(by).map(c => {
+    let state = "good";
+    if (c.next) { const k = dd(c.next, TODAY); state = k < 0 ? "bad" : k <= 30 ? "warn" : "good"; }
+    else if (!c.given) state = "warn";
+    return Object.assign(c, { state });
+  });
+  const vacs = Array.from(new Set(cells.map(c => c.vac)));
+  const keys = Array.from(new Set(cells.map(c => c.key)));
+  return { cells, vacs, keys };
+}
+function shortVac(s) {
+  s = String(s || "Other");
+  if (/fmd|foot/i.test(s)) return "FMD"; if (/\bhs\b|haemorr|hemorr/i.test(s)) return "HS"; if (/\bbq\b|black/i.test(s)) return "BQ";
+  if (/lumpy|lsd/i.test(s)) return "Lumpy skin"; if (/brucell/i.test(s)) return "Brucellosis"; if (/theiler/i.test(s)) return "Theileriosis";
+  if (/tick|external/i.test(s)) return "Tick control"; if (/worm|parasit/i.test(s)) return "Deworming"; return s.length > 18 ? s.slice(0, 18) + "…" : s;
+}
+
+/* ---------- per-cow ranking ---------- */
+function cowRank(r) {
+  return M.active.map(a => {
+    const ms = a.milk.filter(m => inR(m.date, r));
+    return { a, days: ms.length, avg: ms.length ? sum(ms, m => m.tot) / ms.length : 0 };
+  }).filter(c => c.days > 0).sort((x, y) => y.avg - x.avg);
+}
+
+/* ---------- charts ---------- */
+function niceTicks(lo, hi, n) {
+  if (hi === lo) { hi = lo + 1; lo = Math.max(0, lo - 1); }
+  const raw = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * mag;
+  const t = []; for (let v = Math.floor(lo / step) * step; v <= hi + step * 0.001; v += step) t.push(+v.toFixed(6));
+  if (t[t.length - 1] < hi) t.push(+(t[t.length - 1] + step).toFixed(6));
+  return t;
+}
+function lineChart(host, o) {
+  const pts0 = o.series[0].points;
+  if (!pts0.length) { host.innerHTML = '<div class="empty"><b>' + (o.emptyT || "No entries") + '</b>' + (o.emptyP || "") + '</div>'; return; }
+  const W = Math.max(260, host.clientWidth || 600), H = o.height || 230, m = { l: o.ml || 40, r: 14, t: 12, b: 26 };
+  const all = o.series.flatMap(s => s.points);
+  let x0 = Math.min(...all.map(p => +p.x)), x1 = Math.max(...all.map(p => +p.x)); if (x0 === x1) { x0 -= DAY; x1 += DAY; }
+  const ys = all.map(p => p.y);
+  const rY = o.ref ? [o.ref.y] : [];
+  const ticks = niceTicks(o.zero === false ? Math.min(...ys, ...rY) : Math.min(0, ...ys), Math.max(...ys, ...rY, o.yMax || -Infinity), o.ticks || 4);
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r), Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+  let s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(o.label || "chart") + '">';
+  ticks.forEach(t => { s += '<line class="gridl" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y(t) + '" y2="' + Y(t) + '"/><text class="ax" x="' + (m.l - 6) + '" y="' + (Y(t) + 4) + '" text-anchor="end">' + (o.yfmt ? o.yfmt(t) : t) + "</text>"; });
+  if (o.ref) s += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y(o.ref.y) + '" y2="' + Y(o.ref.y) + '" stroke="var(--bad)" stroke-width="1.5" stroke-dasharray="6 4"/>';
+  const nx = Math.min(6, Math.max(2, Math.floor((W - m.l - m.r) / 90)));
+  for (let i = 0; i <= nx; i++) { const v = x0 + (x1 - x0) * i / nx; const d = new Date(v); s += '<text class="ax" x="' + X(v) + '" y="' + (H - 6) + '" text-anchor="' + (i === 0 ? "start" : i === nx ? "end" : "middle") + '">' + fmtD(sod(new Date(d.getTime() + DAY / 2))) + "</text>"; }
+  o.series.forEach(se => {
+    const p = se.points; if (!p.length) return;
+    const path = p.map((q, i) => (i ? "L" : "M") + X(+q.x).toFixed(1) + " " + Y(q.y).toFixed(1)).join(" ");
+    if (se.area) s += '<path d="' + path + " L" + X(+p[p.length - 1].x).toFixed(1) + " " + Y(y0) + " L" + X(+p[0].x).toFixed(1) + " " + Y(y0) + ' Z" fill="' + se.color + '" fill-opacity=".12" stroke="none"/>';
+    s += '<path d="' + path + '" fill="none" stroke="' + se.color + '" stroke-width="' + (se.width || 2) + '" stroke-linejoin="round" stroke-linecap="round"' + (se.dash ? ' stroke-dasharray="' + se.dash + '"' : "") + "/>";
+    if (se.end) { const q = p[p.length - 1]; s += '<circle cx="' + X(+q.x) + '" cy="' + Y(q.y) + '" r="4" fill="' + se.color + '" stroke="var(--surface)" stroke-width="2"/>'; }
+  });
+  if (o.mark && +o.mark >= x0 && +o.mark <= x1) { const mx = X(+o.mark); s += '<line x1="' + mx + '" x2="' + mx + '" y1="' + m.t + '" y2="' + (H - m.b) + '" stroke="var(--ink)" stroke-width="1.5"/><text class="ax" x="' + Math.min(mx + 4, W - m.r - 40) + '" y="' + (m.t + 10) + '" style="font-weight:700;fill:var(--ink)">' + fmtD(o.mark) + "</text>"; }
+  s += '<line id="hl" x1="0" x2="0" y1="' + m.t + '" y2="' + (H - m.b) + '" stroke="var(--muted)" stroke-dasharray="3 3" visibility="hidden"/>';
+  o.series.forEach((se, i) => { s += '<circle class="hd" data-i="' + i + '" r="4.5" fill="' + se.color + '" stroke="var(--surface)" stroke-width="2" visibility="hidden"/>'; });
+  s += '<rect x="' + m.l + '" y="0" width="' + (W - m.l - m.r) + '" height="' + H + '" fill="transparent"/></svg><div class="tip" hidden></div>';
+  host.innerHTML = s;
+  const svg = host.querySelector("svg"), tip = host.querySelector(".tip"), hl = svg.querySelector("#hl"), hd = svg.querySelectorAll(".hd");
+  const move = ev => {
+    const b = svg.getBoundingClientRect(), cx = ((ev.touches ? ev.touches[0].clientX : ev.clientX) - b.left) * W / b.width;
+    let bi = 0, bd = Infinity; pts0.forEach((p, i) => { const k = Math.abs(X(+p.x) - cx); if (k < bd) { bd = k; bi = i; } });
+    const p = pts0[bi], px = X(+p.x);
+    hl.setAttribute("x1", px); hl.setAttribute("x2", px); hl.setAttribute("visibility", "visible");
+    hd.forEach(c => { const se = o.series[+c.dataset.i]; const q = se.points.find(z => +z.x === +p.x); if (q) { c.setAttribute("cx", px); c.setAttribute("cy", Y(q.y)); c.setAttribute("visibility", "visible"); } else c.setAttribute("visibility", "hidden"); });
+    tip.innerHTML = o.tip(p, bi); tip.hidden = false; if (LANG === "ta") translateDOM(tip);
+    const left = px * b.width / W, top = Y(p.y) * b.width / W;
+    tip.style.left = Math.min(Math.max(left, 70), b.width - 70) + "px"; tip.style.top = Math.max(top, 40) + "px";
+  };
+  const leave = () => { tip.hidden = true; hl.setAttribute("visibility", "hidden"); hd.forEach(c => c.setAttribute("visibility", "hidden")); };
+  if (o.onPick) { svg.style.cursor = "pointer"; svg.addEventListener("click", ev => { const b = svg.getBoundingClientRect(), cx = (ev.clientX - b.left) * W / b.width; let bi = 0, bd = Infinity; pts0.forEach((p, i) => { const k = Math.abs(X(+p.x) - cx); if (k < bd) { bd = k; bi = i; } }); o.onPick(pts0[bi]); }); }
+  svg.addEventListener("mousemove", move); svg.addEventListener("touchstart", move, { passive: true }); svg.addEventListener("touchmove", move, { passive: true }); svg.addEventListener("mouseleave", leave);
+}
+function monthChart(host, rows, sel, onPick) {
+  if (!rows.length) { host.innerHTML = '<div class="empty"><b>No money entries yet</b>Fill sheet 9 (Income &amp; Expenditure) or sheet 3 (Milk Sales).</div>'; return; }
+  const W = Math.max(260, host.clientWidth || 600), H = 240, m = { l: 48, r: 8, t: 16, b: 24 };
+  const ticks = niceTicks(0, Math.max(...rows.map(r => Math.max(r.inc, r.exp)), 1), 4), y1 = ticks[ticks.length - 1];
+  const Y = v => m.t + (1 - v / y1) * (H - m.t - m.b), bw = (W - m.l - m.r) / rows.length, gw = Math.min(26, bw * 0.32);
+  let s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Income and expenses by month">';
+  ticks.forEach(t => { s += '<line class="gridl" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y(t) + '" y2="' + Y(t) + '"/><text class="ax" x="' + (m.l - 6) + '" y="' + (Y(t) + 4) + '" text-anchor="end">' + inrK(t) + "</text>"; });
+  rows.forEach((r, i) => {
+    const cx = m.l + bw * i + bw / 2, on = r.k === sel;
+    if (on) s += '<rect x="' + (cx - bw / 2 + 2) + '" y="4" width="' + (bw - 4) + '" height="' + (H - 8) + '" rx="8" fill="var(--sunk)"/>';
+    s += '<rect x="' + (cx - gw - 1) + '" y="' + Y(r.inc) + '" width="' + gw + '" height="' + (Y(0) - Y(r.inc)) + '" rx="3" fill="var(--accent)"/>';
+    s += '<rect x="' + (cx + 1) + '" y="' + Y(r.exp) + '" width="' + gw + '" height="' + (Y(0) - Y(r.exp)) + '" rx="3" fill="var(--gold)"/>';
+    if (r.show || on) s += '<text class="ax" x="' + cx + '" y="' + (H - 6) + '" text-anchor="middle" style="font-weight:' + (on ? 700 : 400) + (on ? ";fill:var(--ink)" : "") + '">' + r.lab + "</text>";
+    s += '<rect class="hit" data-k="' + r.k + '" x="' + (cx - bw / 2) + '" y="0" width="' + bw + '" height="' + H + '" fill="transparent" style="cursor:pointer"><title>' + r.title + ": income " + inr(r.inc) + ", expenses " + inr(r.exp) + ", profit " + inr(r.inc - r.exp) + "</title></rect>";
+  });
+  host.innerHTML = s + "</svg>";
+  host.querySelectorAll(".hit").forEach(h => h.addEventListener("click", () => onPick(h.dataset.k)));
+}
+function bars(host, items, empty) {
+  if (!items.length) { host.innerHTML = '<div class="empty">' + empty + "</div>"; return; }
+  const mx = Math.max(...items.map(i => i.v), 1);
+  host.innerHTML = items.map((it, i) => '<button type="button" class="barrow' + (it.key ? "" : " static") + '" data-i="' + i + '"' + (it.key ? "" : " tabindex=\"-1\"") + '><span class="n">' + esc(it.label) + (it.sub ? "<small>" + esc(it.sub) + "</small>" : "") + '</span><span class="track"><span class="fill ' + (it.tone || "") + '" style="width:' + (it.v / mx * 100).toFixed(1) + '%"></span></span><span class="v">' + it.vt + "</span></button>").join("");
+  host.querySelectorAll(".barrow").forEach(b => { const it = items[+b.dataset.i]; if (it.key) b.addEventListener("click", () => openCow(it.key)); });
+}
+
+/* ---------- render ---------- */
+function render() {
+  const r = range(period), st = stats(r);
+  const prevR = { start: addDays(r.start, -(dd(r.end, r.start) + 1)), end: addDays(r.start, -1) }, pst = stats(prevR);
+  const D = M.D;
+  $("#farmName").textContent = D.farm || "Dairy Farm Dashboard";
+  $("#farmSub").textContent = (S.source === "sample" ? "Sample records for a 9-cow farm, to show how the dashboard works" : "From " + S.fileName) + " · " + r.label;
+  const chip = $("#srcChip"); chip.className = "chip " + (S.source === "sample" ? "sample" : "live"); chip.textContent = S.source === "sample" ? "Sample data" : "Your workbook";
+  $("#sampleBtn").hidden = true;
+
+  // period options
+  const sel = $("#periodSel"), ps = periods();
+  if (period !== "all" && !ps.includes(period)) period = "all";
+  sel.innerHTML = '<option value="all">All days · 10 Sep – 10 Oct</option>' + ps.slice().reverse().map(k => { const x = range(k).day; return '<option value="' + k + '">' + WD[x.getDay()] + ", " + fmtD(x) + "</option>"; }).join("");
+  sel.value = period;
+  const W = range("all"), stW = r.all ? st : stats(W), isDay = !!r.day;
+
+  // KPIs
+  const delta = (a, b) => { if (a == null || !b) return ""; const c = (a - b) / b * 100; if (Math.abs(c) < 0.5) return "same as previous period"; return '<span class="' + (c > 0 ? "up" : "down") + '">' + (c > 0 ? "+" : "−") + n1(Math.abs(c), 0) + "%</span> vs previous"; };
+  const k = [
+    isDay ? ["Milk that day", n1(st.milk), "L", st.nd ? delta(st.milk, pst.milk).replace("previous", "previous day") : "no entry for this day"]
+          : ["Milk per day", n1(st.perDay), "L", st.nd ? "average of " + plural(st.nd, "day") : "no entries"],
+    isDay ? ["Cows milked", st.days[0] ? String(st.days[0].cows) : "-", "", st.perCow ? n1(st.perCow) + " L per cow" : ""]
+          : ["Milk in period", n0(st.milk), "L", st.nd ? plural(st.nd, "day") + " recorded" : "no entries"],
+    ["Milk value", inr(st.milkValue), "", st.fat != null ? "Fat " + n1(st.fat, 2) + "% · SNF " + n1(st.snf, 2) + "%" : "from sheet 3"],
+    ["Expenses", inr(st.expense), "", "from " + st.expSource],
+    ["Profit", inr(st.profit), "", st.otherIncome ? "incl. " + inr(st.otherIncome) + " other income" : "milk value − expenses"],
+    ["Cost per litre", st.costPerL != null ? "₹" + n1(st.costPerL, 2) : "-", "", st.milk && st.milkValue ? "selling at ₹" + n1(st.milkValue / Math.max(1, sum(st.sales, s => s.litres)), 2) + "/L" : ""]
+  ];
+  $("#kpis").innerHTML = k.map(x => '<div class="kpi"><div class="kpi-l">' + x[0] + '</div><div class="kpi-v"' + (x[0] === "Profit" && st.profit < 0 ? ' style="color:var(--bad)"' : "") + ">" + x[1] + (x[2] ? "<small>" + x[2] + "</small>" : "") + '</div><div class="kpi-s">' + x[3] + "</div></div>").join("");
+
+  // herd strip
+  const act = M.active, cows = act.filter(a => a.kind === "cow");
+  const strip = [[act.length, "animals"], [cows.filter(a => a.inMilk).length, "in milk"], [cows.filter(a => !a.inMilk).length, "dry"], [act.filter(a => a.br.pregnant).length, "pregnant"], [act.filter(a => a.kind === "heifer").length, "heifers"], [act.filter(a => a.kind === "calf").length, "calves"]];
+  $("#herdStrip").innerHTML = strip.map(s => "<div><b>" + s[0] + "</b><span>" + s[1] + "</span></div>").join("");
+
+  // alerts
+  const ins = insights(W, stW);
+  const cnt = groupBy(ins, i => i.lv);
+  $("#alertCounts").innerHTML = [["bad", "urgent"], ["warn", "soon"]].filter(([l]) => cnt[l]).map(([l, w]) => '<span class="pill ' + l + '">' + cnt[l].length + " " + w + "</span>").join("");
+  $("#alerts").innerHTML = ins.length ? ins.map((a, i) => '<div class="alert ' + a.lv + '"><span class="sev ' + a.lv + '">' + ({ bad: "Urgent", warn: "Soon", info: "Note", good: "Good" }[a.lv]) + '</span><div><b>' + esc(a.t) + "</b><p>" + esc(a.p) + (a.key ? ' <button type="button" class="link" data-k="' + esc(a.key) + '">Open card</button>' : "") + "</p></div></div>").join("") : '<div class="empty"><b>Nothing needs attention</b>All records are up to date.</div>';
+  $("#alerts").querySelectorAll("button.link").forEach(b => b.addEventListener("click", () => openCow(b.dataset.k)));
+
+  // calendar
+  const vs = vaccStatus();
+  const allEv = dayEvents(), evByDay = groupBy(allEv, e => ymd(e.date));
+  const evs = allEv.filter(e => inR(e.date, r)).sort((a, b) => b.date - a.date || (a.money ? 1 : 0) - (b.money ? 1 : 0));
+  $("#diaryNote").textContent = isDay ? fmtDY(r.day) : "newest first · " + plural(evs.length, "entry").replace("entrys", "entries");
+  $("#calendar").innerHTML = evs.length ? evs.map(e => '<li class="' + e.c + '"><div class="d"><b>' + e.date.getDate() + "</b><span>" + MON[e.date.getMonth()] + '</span></div><div><div class="t">' + esc(e.t) + '</div><div class="s">' + WD[e.date.getDay()] + (e.s ? " · " + esc(e.s) : "") + "</div></div></li>").join("") : '<li><div></div><div class="empty">Nothing recorded ' + (isDay ? "on this day" : "in this period") + ".</div></li>";
+
+  const diaryP = $("#calendar").closest(".panel");
+  diaryP.hidden = !evs.length;
+  diaryP.parentElement.style.gridTemplateColumns = evs.length ? "" : "minmax(0,1fr)";
+
+  // day-by-day register
+  const salesBy = groupBy(M.D.sales, s => ymd(s.date)), feedBy = groupBy(M.D.feed, f => ymd(f.date)), finBy = groupBy(M.D.finance, f => ymd(f.date));
+  const isMilkF = f => /milk/i.test((f.category || "") + " " + (f.particulars || ""));
+  const drows = periods().map(k => {
+    const d = range(k).day, m = M.daily[k], sl = salesBy[k] || [], fd = feedBy[k] || [], fn = finBy[k] || [];
+    const lit = sum(sl, s => s.litres);
+    return { k, d, m, cows: m ? m.cows : null, am: m ? m.am : null, pm: m ? m.pm : null, tot: m ? m.total : null, avg7: m ? m.avg7 : null,
+      fat: sl.length ? wavg(sl, "fat") : null, snf: sl.length ? wavg(sl, "snf") : null, val: sl.length ? sum(sl, s => s.amount != null ? s.amount : (s.litres || 0) * (s.rate || 0)) : null, lit,
+      conc: fd.length ? sum(fd, f => f.conc) : null, green: fd.length ? sum(fd, f => f.green) : null,
+      exp: sum(fn, f => f.expense), inc: sum(fn.filter(f => !isMilkF(f)), f => f.income), paid: sum(fn.filter(isMilkF), f => f.income),
+      notes: (evByDay[k] || []).filter(e => !e.money).map(e => e.t) };
+  });
+  const tot = f => sum(drows, x => x[f]);
+  const cell = (v, f) => v == null || (v === 0 && f !== "z") ? '<span class="sub">-</span>' : f(v);
+  $("#dayTbl").innerHTML = "<table><thead><tr><th>Date</th><th class=\"r\">Cows</th><th class=\"r\">Morning L</th><th class=\"r\">Evening L</th><th class=\"r\">Total L</th><th class=\"r\">vs 7-day avg</th><th class=\"r\">Fat %</th><th class=\"r\">SNF %</th><th class=\"r\">Milk value</th><th class=\"r\">Conc. kg</th><th class=\"r\">Green kg</th><th class=\"r\">Expenses</th><th class=\"r\">Other income</th><th class=\"r\">Milk payment</th><th>Notes</th></tr></thead><tbody>" +
+    drows.map(x => { const ch = x.tot && x.avg7 ? (x.tot - x.avg7) / x.avg7 * 100 : null;
+      return '<tr class="click' + (x.k === period ? " sel" : "") + (x.m ? "" : " nodata") + '" data-k="' + x.k + '"><td class="wd"><b>' + fmtD(x.d) + '</b><span class="sub">' + WD[x.d.getDay()] + '</span></td><td class="r">' + cell(x.cows, String) + '</td><td class="r">' + cell(x.am, v => n1(v)) + '</td><td class="r">' + cell(x.pm, v => n1(v)) + '</td><td class="r"><b>' + cell(x.tot, v => n1(v)) + '</b></td><td class="r">' + (ch == null ? '<span class="sub">-</span>' : '<span class="chg ' + (ch >= 0 ? "up" : "down") + '">' + (ch >= 0 ? "+" : "−") + n1(Math.abs(ch), 0) + "%</span>") + '</td><td class="r">' + cell(x.fat, v => n1(v, 2)) + '</td><td class="r">' + cell(x.snf, v => n1(v, 2)) + '</td><td class="r">' + cell(x.val, inr) + '</td><td class="r">' + cell(x.conc, v => n1(v)) + '</td><td class="r">' + cell(x.green, n0) + '</td><td class="r">' + cell(x.exp, inr) + '</td><td class="r">' + cell(x.inc, inr) + '</td><td class="r">' + cell(x.paid, inr) + "</td><td>" + (x.notes.length ? esc(x.notes.slice(0, 2).join("; ")) + (x.notes.length > 2 ? ' <span class="sub">+' + (x.notes.length - 2) + " more</span>" : "") : '<span class="sub">-</span>') + "</td></tr>"; }).join("") +
+    '<tr class="tot"><td>Total</td><td class="r">' + (stW.perCow ? "" : "") + '</td><td class="r">' + n0(tot("am")) + '</td><td class="r">' + n0(tot("pm")) + '</td><td class="r">' + n0(tot("tot")) + '</td><td></td><td class="r">' + n1(stW.fat, 2) + '</td><td class="r">' + n1(stW.snf, 2) + '</td><td class="r">' + inr(tot("val")) + '</td><td class="r">' + n0(tot("conc")) + '</td><td class="r">' + n0(tot("green")) + '</td><td class="r">' + inr(tot("exp")) + '</td><td class="r">' + inr(tot("inc")) + '</td><td class="r">' + inr(tot("paid")) + "</td><td>" + plural(drows.filter(x => x.m).length, "day") + " with milk entries</td></tr></tbody></table>";
+  $("#dayTbl").querySelectorAll("tr.click").forEach(t => t.addEventListener("click", () => { period = period === t.dataset.k ? "all" : t.dataset.k; render(); }));
+
+  // milk
+  $("#milkNote").textContent = M.hasMilk ? "Herd average " + n1(st.perCow) + " L per cow per day · " + r.label : "";
+  drawMilk(W, stW, r.day);
+  $("#cowBarsT").textContent = isDay ? "Litres per cow on " + fmtD(r.day) : "Average litres per cow per day";
+  const ranked = cowRank(r);
+  bars($("#cowBars"), ranked.map(c => ({ key: c.a.key, label: c.a.name || c.a.tag, sub: c.a.br.label, v: c.avg, vt: n1(c.avg) + " L", tone: st.perCow && c.avg < st.perCow * 0.6 ? "warn" : "" })), "<b>No milk entries in this period</b>Fill sheet 2 with each cow's morning and evening litres.");
+
+  // breeding table
+  const herdRows = M.active.filter(a => a.kind === "cow" || a.kind === "heifer").sort((a, b) => ({ bad: 0, warn: 1, info: 2, good: 3, neutral: 4 }[a.br.tone] - { bad: 0, warn: 1, info: 2, good: 3, neutral: 4 }[b.br.tone]));
+  $("#breedTbl").innerHTML = herdRows.length ? "<table><thead><tr><th>Animal</th><th>Status</th><th class=\"r\">Milk, 7-day avg</th><th>Last calving</th><th>Last AI</th><th>Next step</th></tr></thead><tbody>" + herdRows.map(a => {
+    const nx = (a.br.events || []).filter(e => dd(e.date, TODAY) >= -30).sort((x, y) => x.date - y.date)[0];
+    return '<tr class="click" data-k="' + esc(a.key) + '"><td><b>' + esc(a.name || a.tag) + '</b><span class="sub">' + esc([a.tag !== a.name ? a.tag : "", a.breed].filter(Boolean).join(" · ")) + '</span></td><td><span class="pill ' + a.br.tone + '">' + esc(a.br.label) + "</span>" + (a.br.dim != null && a.inMilk ? '<span class="sub">' + a.br.dim + " days in milk</span>" : "") + '</td><td class="r">' + (a.avg7 != null && a.inMilk ? n1(a.avg7) + " L" : '<span class="sub">dry</span>') + "</td><td>" + fmtD(a.br.lastCalving) + "</td><td>" + (a.br.lastService ? fmtD(a.br.lastService) + (a.br.services > 1 ? '<span class="sub">' + a.br.services + " services</span>" : "") : "-") + "</td><td>" + (nx ? fmtD(nx.date) + '<span class="sub">' + esc(nx.t.split(a.name || a.tag).join("").replace(/\s*–\s*$/, "").replace(/\s{2,}/g, " ").trim()) + "</span>" : "-") + "</td></tr>";
+  }).join("") + "</tbody></table>" : '<div class="empty"><b>No animals yet</b>Add your cows to sheet 1 (Herd Register) and their AI dates to sheet 4.</div>';
+  $("#breedTbl").querySelectorAll("tr.click").forEach(t => t.addEventListener("click", () => openCow(t.dataset.k)));
+
+  // vaccination matrix
+  if (vs.cells.length) {
+    const ord = ["FMD", "HS", "BQ", "Lumpy skin", "Brucellosis", "Theileriosis", "Deworming", "Tick control"];
+    const vacs = vs.vacs.sort((a, b) => (ord.indexOf(a) + 1 || 99) - (ord.indexOf(b) + 1 || 99));
+    const keys = vs.keys.sort((a, b) => { const A1 = M.A.get(a), B1 = M.A.get(b); return ((A1 && A1.kind === "calf") - (B1 && B1.kind === "calf")) || String(a).localeCompare(String(b)); });
+    $("#vaccTbl").innerHTML = '<table class="vm"><thead><tr><th>Animal</th>' + vacs.map(v => '<th style="text-align:center">' + esc(v) + "</th>").join("") + "</tr></thead><tbody>" + keys.map(k => {
+      const a = M.A.get(k);
+      return '<tr class="click" data-k="' + esc(k) + '"><td><b>' + esc(a ? (a.name || a.tag) : k) + "</b></td>" + vacs.map(v => { const c = vs.cells.find(x => x.key === k && x.vac === v); return c ? '<td class="cell" title="' + esc(v + (c.given ? " given " + fmtDY(c.given) : "") + (c.next ? ", next " + fmtDY(c.next) : "")) + '"><span class="dot ' + c.state + '"></span><small>' + (c.next ? fmtD(c.next) : "given") + "</small></td>" : '<td class="cell"><span class="dot none"></span></td>'; }).join("") + "</tr>";
+    }).join("") + "</tbody></table>";
+    $("#vaccTbl").querySelectorAll("tr.click").forEach(t => t.addEventListener("click", () => openCow(t.dataset.k)));
+  } else $("#vaccTbl").innerHTML = '<div class="empty"><b>No vaccination entries</b>Record FMD, HS, BQ and deworming dates in sheet 6.</div>';
+
+  // health list
+  const hl = D.health.slice().sort((a, b) => b.date - a.date).slice(0, 8);
+  $("#healthList").innerHTML = hl.length ? '<ul class="hist">' + hl.map(h => { const a = M.A.get(h.key); const tone = h.withdrawal && h.withdrawal >= TODAY ? "bad" : /under/i.test(h.outcome || "") ? "warn" : /died/i.test(h.outcome || "") ? "bad" : /recov/i.test(h.outcome || "") ? "good" : "neutral"; return "<li><b>" + esc(a ? (a.name || a.tag) : (h.name || h.tag)) + "</b> · " + esc(h.diagnosis || h.symptoms) + ' <span class="pill ' + tone + '">' + esc(h.withdrawal && h.withdrawal >= TODAY ? "Withdrawal till " + fmtD(h.withdrawal) : (h.outcome || "-")) + "</span><br><span>" + fmtDY(h.date) + (h.cost ? " · " + inr(h.cost) : "") + (h.medicine ? " · " + esc(h.medicine) : "") + "</span></li>"; }).join("") + "</ul>" : '<div class="empty"><b>No treatments recorded</b>Sheet 5 records illness, medicine and milk withdrawal dates.</div>';
+
+  // money
+  $("#moneyNote").textContent = "Profit = milk value (sheet 3) + other income − expenses (" + st.expSource + ")";
+  const step = Math.max(1, Math.ceil(drows.length / Math.max(4, Math.floor(($("#monthChart").clientWidth || 600) / 56))));
+  monthChart($("#monthChart"), drows.filter(x => (x.val || 0) + x.inc + x.exp > 0).map(x => ({ k: x.k, inc: (x.val || 0) + x.inc, exp: x.exp, lab: fmtD(x.d), title: WD[x.d.getDay()] + " " + fmtDY(x.d), show: (dd(x.d, WIN_START) % step) === 0 })), isDay ? period : null, k => { period = period === k ? "all" : k; render(); });
+  $("#expNote").textContent = r.label + " · " + inr(st.expense);
+  bars($("#expBars"), st.cats.map(c => ({ label: c.k, v: c.v, vt: n1(c.v / st.expense * 100, 0) + "%", sub: inr(c.v), tone: /feed|fodder/i.test(c.k) ? "gold" : "" })), "<b>No expenses in this period</b>Record every rupee spent in sheet 9.");
+
+  // calves
+  const calves = D.calves.slice().sort((a, b) => (b.dob || 0) - (a.dob || 0));
+  $("#calfTbl").innerHTML = calves.length ? "<table><thead><tr><th>Calf</th><th>Born</th><th class=\"r\">Birth wt</th><th>Colostrum</th><th class=\"r\">3 mo</th><th class=\"r\">6 mo</th></tr></thead><tbody>" + calves.map(c => { const dam = M.A.get(c.damKey); const age = c.dob ? dd(TODAY, c.dob) : null; return "<tr><td><b>" + esc(c.tag) + '</b><span class="sub">' + esc((c.sex === "F" ? "Female" : c.sex === "M" ? "Male" : "") + (dam ? " · of " + (dam.name || dam.tag) : "")) + "</span></td><td>" + fmtD(c.dob) + (age != null ? '<span class="sub">' + age + " days old</span>" : "") + '</td><td class="r">' + (c.bw != null ? n1(c.bw, 0) + " kg" : "-") + "</td><td>" + (c.colostrum ? '<span class="pill ' + (/^y/i.test(c.colostrum) ? "good" : "warn") + '">' + esc(c.colostrum) + "</span>" : "-") + '</td><td class="r">' + (c.w3 != null ? n1(c.w3, 0) + " kg" : '<span class="sub">' + (age != null && age < 90 ? "at " + fmtD(addDays(c.dob, 90)) : "-") + "</span>") + '</td><td class="r">' + (c.w6 != null ? n1(c.w6, 0) + " kg" : '<span class="sub">' + (age != null && age < 180 ? "at " + fmtD(addDays(c.dob, 180)) : "-") + "</span>") + "</td></tr>"; }).join("") + "</tbody></table>" : '<div class="empty"><b>No calves recorded</b>Sheet 8 tracks birth weight, colostrum and growth.</div>';
+
+  renderCharts(drows, stW, st, r);
+  LAST = { drows, evByDay }; renderCompare();
+  translateDOM(document.body);
+}
+function drawMilk(r, st, mark) {
+  const pts = st.days.map(d => ({ x: d.date, y: d.total, d }));
+  lineChart($("#milkChart"), {
+    label: "Daily milk", mark, onPick: p => { const k = ymd(p.x); period = period === k ? "all" : k; render(); }, series: [{ points: pts, color: "var(--accent)", area: true, width: 2 }, { points: st.days.map(d => ({ x: d.date, y: d.avg7 })), color: "var(--gold)", width: 2, dash: "5 4", end: true }],
+    yfmt: v => v, emptyT: "No milk entries in this period", emptyP: "Fill sheet 2 with morning and evening litres for each cow.",
+    tip: p => "<b>" + fmtDY(p.x) + "</b><br>" + n1(p.d.total) + " L from " + plural(p.d.cows, "cow") + "<br>Morning " + n1(p.d.am) + " · Evening " + n1(p.d.pm) + "<br>7-day avg " + n1(p.d.avg7)
+  });
+  const sp = $("#sparks");
+  const sd = groupBy(st.sales.filter(s => s.fat != null || s.snf != null), s => ymd(s.date));
+  const ser = Object.values(sd).map(l => ({ x: l[0].date, fat: wavg(l, "fat"), snf: wavg(l, "snf") })).sort((a, b) => a.x - b.x);
+  if (!ser.length) { sp.innerHTML = ""; return; }
+  sp.innerHTML = '<div class="spark"><div class="l">Average fat</div><div class="v">' + n1(st.fat, 2) + '%</div><div class="chart" id="spFat"></div></div><div class="spark"><div class="l">Average SNF</div><div class="v">' + n1(st.snf, 2) + '%</div><div class="chart" id="spSnf"></div></div>';
+  lineChart($("#spFat"), { series: [{ points: ser.filter(s => s.fat != null).map(s => ({ x: s.x, y: s.fat })), color: "var(--accent)", end: true }], zero: false, height: 90, ml: 34, yfmt: v => v.toFixed(1), tip: p => fmtD(p.x) + ": fat " + n1(p.y, 2) + "%" });
+  lineChart($("#spSnf"), { series: [{ points: ser.filter(s => s.snf != null).map(s => ({ x: s.x, y: s.snf })), color: "var(--gold)", end: true }], zero: false, height: 90, ml: 34, yfmt: v => v.toFixed(1), tip: p => fmtD(p.x) + ": SNF " + n1(p.y, 2) + "%" });
+}
+function wavg(l, f) { const v = l.filter(s => s[f] != null); const w = sum(v, s => s.litres || 1); return w ? sum(v, s => s[f] * (s.litres || 1)) / w : null; }
+function monthRows() {
+  const ks = periods().slice().sort();
+  return ks.map(k => { const [y, m] = k.split("-").map(Number); const s = stats({ start: new Date(y, m - 1, 1), end: new Date(y, m, 0), label: mlabel(k) }); return { k, inc: s.milkValue + s.otherIncome, exp: s.expense }; }).filter(r => r.inc || r.exp);
+}
+
+/* ---------- charts page ---------- */
+function stackChart(host, rows, sel, onPick) {
+  if (!rows.some(r => r.parts.some(p => p.v))) { host.innerHTML = '<div class="empty"><b>No milk entries</b>Fill sheet 2 with morning and evening litres.</div>'; return; }
+  const W = Math.max(260, host.clientWidth || 700), H = 260, m = { l: 40, r: 8, t: 12, b: 24 };
+  const ticks = niceTicks(0, Math.max(...rows.map(r => sum(r.parts, p => p.v))), 4), y1 = ticks[ticks.length - 1];
+  const Y = v => m.t + (1 - v / y1) * (H - m.t - m.b), bw = (W - m.l - m.r) / rows.length, g = Math.max(2, Math.min(18, bw * 0.7));
+  let s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Morning and evening milk by day">';
+  ticks.forEach(t => { s += '<line class="gridl" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y(t) + '" y2="' + Y(t) + '"/><text class="ax" x="' + (m.l - 6) + '" y="' + (Y(t) + 4) + '" text-anchor="end">' + t + "</text>"; });
+  rows.forEach((r, i) => {
+    const cx = m.l + bw * i + bw / 2, on = r.k === sel; let acc = 0;
+    if (on) s += '<rect x="' + (cx - bw / 2) + '" y="2" width="' + bw + '" height="' + (H - 4) + '" rx="4" fill="var(--accent-soft)"/>';
+    r.parts.forEach(p => { if (!p.v) return; s += '<rect x="' + (cx - g / 2) + '" y="' + Y(acc + p.v) + '" width="' + g + '" height="' + (Y(acc) - Y(acc + p.v)) + '" fill="' + p.color + '"/>'; acc += p.v; });
+    if (r.show || on) s += '<text class="ax" x="' + cx + '" y="' + (H - 6) + '" text-anchor="middle"' + (on ? ' style="font-weight:700;fill:var(--ink)"' : "") + ">" + r.lab + "</text>";
+    s += '<rect class="hit" data-k="' + r.k + '" x="' + (cx - bw / 2) + '" y="0" width="' + bw + '" height="' + H + '" fill="transparent" style="cursor:pointer"><title>' + r.title + "</title></rect>";
+  });
+  host.innerHTML = s + "</svg>";
+  host.querySelectorAll(".hit").forEach(h => h.addEventListener("click", () => onPick(h.dataset.k)));
+}
+function renderCharts(drows, stW, st, r) {
+  if (!document.body.classList.contains("page-charts")) return;
+  const sel = r.day ? ymd(r.day) : null, mark = r.day || null;
+  const pick = k => { period = period === k ? "all" : k; render(); };
+  const pickP = p => pick(ymd(p.x));
+  const step = Math.max(1, Math.ceil(drows.length / Math.max(4, Math.floor(($("#cMilkStack").clientWidth || 700) / 56))));
+  stackChart($("#cMilkStack"), drows.map(x => ({ k: x.k, lab: fmtD(x.d), show: dd(x.d, WIN_START) % step === 0, title: WD[x.d.getDay()] + " " + fmtDY(x.d) + ": morning " + n1(x.am || 0) + " L, evening " + n1(x.pm || 0) + " L, total " + n1(x.tot || 0) + " L",
+    parts: [{ v: x.am || 0, color: "var(--accent)" }, { v: x.pm || 0, color: "var(--mint)" }] })), sel, pick);
+
+  // small multiples per cow
+  const cows = M.active.filter(a => a.milk.length).sort((a, b) => (b.avg7 || 0) - (a.avg7 || 0));
+  const yMax = Math.max(1, ...cows.flatMap(a => a.milk.map(m => m.tot)));
+  const host = $("#cCows");
+  host.innerHTML = cows.length ? cows.map((a, i) => '<div class="mini"><div class="m"><button type="button" data-k="' + esc(a.key) + '">' + esc(a.name || a.tag) + "</button><span>" + (r.day ? (() => { const m = a.milk.find(z => +z.date === +r.day); return m ? n1(m.tot) + " L on " + fmtD(r.day) : "no entry " + fmtD(r.day); })() : "avg " + n1(sum(a.milk, m => m.tot) / a.milk.length) + " L/day") + '</span></div><div class="chart" id="cw' + i + '"></div></div>').join("") : '<div class="empty"><b>No milk entries</b>Each cow gets her own chart once sheet 2 has entries.</div>';
+  host.querySelectorAll("button[data-k]").forEach(b => b.addEventListener("click", () => openCow(b.dataset.k)));
+  cows.forEach((a, i) => lineChart($("#cw" + i), { series: [{ points: a.milk.map(m => ({ x: m.date, y: m.tot, m })), color: a.inMilk ? "var(--accent)" : "var(--muted)", area: true, end: true }], yMax, height: 120, ml: 30, ticks: 2, mark, onPick: pickP, tip: p => fmtD(p.x) + ": " + n1(p.y) + " L" }));
+
+  const S = (f) => drows.filter(x => x[f] != null && isFinite(x[f]));
+  lineChart($("#cFat"), { series: [{ points: S("fat").map(x => ({ x: x.d, y: x.fat })), color: "var(--accent)", end: true }], zero: false, ref: { y: 3.5 }, height: 200, mark, onPick: pickP, yfmt: v => v.toFixed(1), emptyT: "No fat readings", emptyP: "Sheet 3 has a Fat % column.", tip: p => fmtDY(p.x) + "<br>Fat " + n1(p.y, 2) + "%" });
+  lineChart($("#cSnf"), { series: [{ points: S("snf").map(x => ({ x: x.d, y: x.snf })), color: "var(--sky)", end: true }], zero: false, ref: { y: 8.5 }, height: 200, mark, onPick: pickP, yfmt: v => v.toFixed(1), emptyT: "No SNF readings", emptyP: "Sheet 3 has an SNF % column.", tip: p => fmtDY(p.x) + "<br>SNF " + n1(p.y, 2) + "%" });
+
+  let ci = 0, ce = 0; const cum = drows.map(x => { ci += (x.val || 0) + x.inc; ce += x.exp; return { x: x.d, i: ci, e: ce }; });
+  lineChart($("#cCum"), { series: [{ points: cum.map(c => ({ x: c.x, y: c.i, c })), color: "var(--accent)", area: true, end: true }, { points: cum.map(c => ({ x: c.x, y: c.e })), color: "var(--gold)", end: true }], height: 200, ml: 48, mark, onPick: pickP, yfmt: inrK, emptyT: "No money entries", tip: p => "<b>Up to " + fmtD(p.x) + "</b><br>In " + inr(p.c.i) + "<br>Out " + inr(p.c.e) + "<br>Profit " + inr(p.c.i - p.c.e) });
+
+  lineChart($("#cRate"), { series: [{ points: drows.filter(x => x.val && x.lit).map(x => ({ x: x.d, y: x.val / x.lit })), color: "var(--gold)", end: true }], zero: false, height: 200, ml: 44, mark, onPick: pickP, yfmt: v => "₹" + v.toFixed(1), emptyT: "No sales entries", emptyP: "Sheet 3 needs litres and rate.", tip: p => fmtDY(p.x) + "<br>₹" + n1(p.y, 2) + " per litre" });
+  lineChart($("#cEff"), { series: [{ points: drows.filter(x => x.tot && x.conc).map(x => ({ x: x.d, y: x.tot / x.conc })), color: "var(--accent)", end: true }], zero: false, height: 200, mark, onPick: pickP, yfmt: v => v.toFixed(2), emptyT: "No feed entries", emptyP: "Sheet 7 needs concentrate kg per day.", tip: p => fmtDY(p.x) + "<br>" + n1(p.y, 2) + " L milk per kg concentrate" });
+
+  $("#cExpNote").textContent = r.label + " · " + inr(st.expense);
+  bars($("#cExp"), st.cats.map(c => ({ label: c.k, v: c.v, vt: n1(c.v / st.expense * 100, 0) + "%", sub: inr(c.v), tone: /feed|fodder/i.test(c.k) ? "gold" : "" })), "<b>No expenses</b>Record spending in sheet 9.");
+
+  const act = M.active, parts = [["In milk", act.filter(a => a.kind === "cow" && a.inMilk).length, "var(--accent)"], ["Dry", act.filter(a => a.kind === "cow" && !a.inMilk).length, "var(--sky)"], ["Heifers", act.filter(a => a.kind === "heifer").length, "var(--gold)"], ["Calves", act.filter(a => a.kind === "calf").length, "var(--mint)"], ["Bulls", act.filter(a => a.kind === "bull").length, "var(--muted)"]].filter(p => p[1]);
+  const tot = sum(parts, p => p[1]);
+  $("#cHerd").innerHTML = tot ? '<div class="stackbar">' + parts.map(p => '<span style="width:' + (p[1] / tot * 100) + "%;background:" + p[2] + '">' + p[1] + "</span>").join("") + '</div><div class="keys">' + parts.map(p => '<div><span><i style="background:' + p[2] + '"></i>' + p[0] + "</span><b>" + p[1] + " · " + n1(p[1] / tot * 100, 0) + "%</b></div>").join("") + "</div>" : '<div class="empty"><b>No animals</b>Add the herd in sheet 1.</div>';
+
+  const cat = a => { const b = a.br, l = b.label; if (b.pregnant) return ["Pregnant", "good"]; if (a.kind === "heifer" && !b.lastService) return ["Heifer", "gold"]; if (/repeat/i.test(l)) return ["Repeat breeder", "warn"]; if (/AI done|Pregnancy check/i.test(l)) return ["Inseminated, waiting for PD", ""]; if (/Not bred|Not pregnant/i.test(l)) return ["Open, needs AI", "warn"]; if (/Fresh|Ready/i.test(l)) return ["Fresh / ready for AI", ""]; if (a.kind === "heifer") return ["Heifer", "gold"]; return ["No record", ""]; };
+  const g = groupBy(M.active.filter(a => a.kind === "cow" || a.kind === "heifer").map(a => ({ a, c: cat(a) })), x => x.c[0]);
+  bars($("#cBreed"), Object.entries(g).sort((x, y) => y[1].length - x[1].length).map(([k, l]) => ({ label: k, sub: l.map(x => x.a.name || x.a.tag).join(", "), v: l.length, vt: String(l.length), tone: l[0].c[1] })), "<b>No cows recorded</b>Add cows to sheet 1 and AI dates to sheet 4.");
+}
+function setPage(id) {
+  const pg = id === "charts" || id === "compare" ? id : null;
+  document.body.classList.toggle("page-charts", pg === "charts"); document.body.classList.toggle("page-compare", pg === "compare");
+  document.querySelectorAll("nav.sections a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + (pg || "overview")));
+  return pg;
+}
+function showPage(id, scroll) {
+  const pg = setPage(id);
+  render();
+  if (pg) window.scrollTo(0, 0); else if (scroll) { const el = document.getElementById(id); if (el) el.scrollIntoView(); }
+}
+document.querySelectorAll("nav.sections a").forEach(a => a.addEventListener("click", e => { e.preventDefault(); const id = a.getAttribute("href").slice(1); showPage(id, true); try { history.replaceState(null, "", "#" + id); } catch (er) {} }));
+
+/* ---------- compare two days ---------- */
+let LAST = null;
+const kg = v => n1(v) + " kg", L = v => n1(v) + " L", pts = v => n1(v, 2) + " pts";
+const CMP = [
+  { id: "tot", g: "Milk", l: "Total milk", f: x => x.tot, fmt: L, hb: 1 },
+  { id: "am", g: "Milk", l: "Morning milk", f: x => x.am, fmt: L, hb: 1 },
+  { id: "pm", g: "Milk", l: "Evening milk", f: x => x.pm, fmt: L, hb: 1 },
+  { id: "cows", g: "Milk", l: "Cows milked", f: x => x.cows, fmt: n0, hb: 0 },
+  { id: "pc", g: "Milk", l: "Milk per cow", f: x => x.tot && x.cows ? x.tot / x.cows : null, fmt: L, hb: 1 },
+  { id: "fat", g: "Quality and price", l: "Fat %", f: x => x.fat, fmt: v => n1(v, 2) + "%", dfmt: pts, hb: 1 },
+  { id: "snf", g: "Quality and price", l: "SNF %", f: x => x.snf, fmt: v => n1(v, 2) + "%", dfmt: pts, hb: 1 },
+  { id: "rate", g: "Quality and price", l: "Price per litre", f: x => x.val && x.lit ? x.val / x.lit : null, fmt: v => "₹" + n1(v, 2), hb: 1 },
+  { id: "val", g: "Money", l: "Milk value", f: x => x.val, fmt: inr, hb: 1 },
+  { id: "exp", g: "Money", l: "Expenses", f: x => x.exp, fmt: inr, hb: -1 },
+  { id: "inc", g: "Money", l: "Other income", f: x => x.inc, fmt: inr, hb: 1 },
+  { id: "paid", g: "Money", l: "Milk payment received", f: x => x.paid, fmt: inr, hb: 0 },
+  { id: "net", g: "Money", l: "Day's net (milk value + income − expenses)", f: x => (x.val || 0) + x.inc - x.exp, fmt: inr, hb: 1 },
+  { id: "conc", g: "Feed", l: "Concentrate fed", f: x => x.conc, fmt: kg, hb: 0 },
+  { id: "green", g: "Feed", l: "Green fodder", f: x => x.green, fmt: kg, hb: 0 },
+  { id: "eff", g: "Feed", l: "Milk per kg concentrate", f: x => x.tot && x.conc ? x.tot / x.conc : null, fmt: v => n1(v, 2) + " L", hb: 1 },
+  { id: "_cows", g: "Sections", l: "Each cow's milk" },
+  { id: "_diary", g: "Sections", l: "Farm diary entries" }
+];
+const CKEY = "dairy-cmp-v1";
+let CS = { a: "2026-10-09", b: "2026-10-10", on: ["tot", "am", "pm", "pc", "fat", "snf", "val", "exp", "net", "conc", "eff", "_cows", "_diary"] };
+try { const s = JSON.parse(localStorage.getItem(CKEY) || "null"); if (s && s.a && s.b && Array.isArray(s.on)) CS = s; } catch (e) {}
+const saveCS = () => { try { localStorage.setItem(CKEY, JSON.stringify(CS)); } catch (e) {} };
+function initCompare() {
+  const opts = periods().map(k => { const x = range(k).day; return '<option value="' + k + '">' + WD[x.getDay()] + ", " + fmtDY(x) + "</option>"; }).join("");
+  $("#cmpA").innerHTML = opts; $("#cmpB").innerHTML = opts;
+  $("#cmpA").value = CS.a; $("#cmpB").value = CS.b;
+  $("#cmpA").addEventListener("change", e => { CS.a = e.target.value; saveCS(); renderCompare(); });
+  $("#cmpB").addEventListener("change", e => { CS.b = e.target.value; saveCS(); renderCompare(); });
+  $("#cmpSwap").addEventListener("click", () => { const t = CS.a; CS.a = CS.b; CS.b = t; $("#cmpA").value = CS.a; $("#cmpB").value = CS.b; saveCS(); renderCompare(); });
+  const groups = groupBy(CMP, m => m.g);
+  $("#cmpPick").innerHTML = Object.entries(groups).map(([g, l]) => "<div><h4>" + esc(g) + "</h4>" + l.map(m => '<label for="ck_' + m.id + '"><input type="checkbox" id="ck_' + m.id + '" value="' + m.id + '"' + (CS.on.includes(m.id) ? " checked" : "") + ">" + esc(m.l) + "</label>").join("") + "</div>").join("");
+  $("#cmpPick").addEventListener("change", () => { CS.on = Array.from($("#cmpPick").querySelectorAll("input:checked")).map(i => i.value); saveCS(); renderCompare(); });
+  const quick = [["All", () => CMP.map(m => m.id)], ["Milk only", () => CMP.filter(m => m.g === "Milk").map(m => m.id).concat(["_cows"])], ["Money only", () => CMP.filter(m => m.g === "Money").map(m => m.id)], ["Feed and quality", () => CMP.filter(m => m.g === "Feed" || m.g === "Quality and price").map(m => m.id)], ["Clear", () => []]];
+  $("#cmpQuick").innerHTML = quick.map((q, i) => '<button type="button" data-i="' + i + '">' + q[0] + "</button>").join("");
+  $("#cmpQuick").querySelectorAll("button").forEach(b => b.addEventListener("click", () => { CS.on = quick[+b.dataset.i][1](); $("#cmpPick").querySelectorAll("input").forEach(i => i.checked = CS.on.includes(i.value)); saveCS(); renderCompare(); }));
+  $("#cmpPresets").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; CS.a = b.dataset.a; CS.b = b.dataset.b; $("#cmpA").value = CS.a; $("#cmpB").value = CS.b; saveCS(); renderCompare(); });
+}
+function renderCompare() { renderCompare0(); if (LANG === "ta") translateDOM($("#compare")); }
+function renderCompare0() {
+  if (!LAST || !document.body.classList.contains("page-compare")) return;
+  const { drows, evByDay } = LAST, byK = {}; drows.forEach(x => byK[x.k] = x);
+  const A = byK[CS.a] || drows[0], B = byK[CS.b] || drows[drows.length - 1];
+  const lab = x => WD[x.d.getDay()] + " " + fmtD(x.d);
+  // presets
+  const withMilk = drows.filter(x => x.tot);
+  const best = withMilk.slice().sort((x, y) => y.tot - x.tot)[0], worst = withMilk.slice().sort((x, y) => x.tot - y.tot)[0];
+  const wk = addDays(B.d, -7), pres = [["Last two days", "2026-10-09", "2026-10-10"], ["First vs last day", "2026-09-10", "2026-10-10"]];
+  if (wk >= WIN_START) pres.push(["Same weekday, week before B", ymd(wk), B.k]);
+  if (best && worst && best.k !== worst.k) pres.push(["Lowest vs highest milk day", worst.k, best.k]);
+  $("#cmpPresets").innerHTML = pres.map(p => '<button type="button" data-a="' + p[1] + '" data-b="' + p[2] + '">' + p[0] + "</button>").join("");
+
+  $("#cmpTitle").innerHTML = '<span><span style="color:var(--muted)">A</span> ' + esc(WD[A.d.getDay()] + ", " + fmtDY(A.d)) + ' &nbsp;vs&nbsp; <span style="color:var(--accent)">B</span> ' + esc(WD[B.d.getDay()] + ", " + fmtDY(B.d)) + "</span>" + (A.k === B.k ? '<span class="note">pick two different days</span>' : '<span class="note">change = B − A</span>');
+  const chg = (m, a, b) => {
+    if (a == null || b == null) return { t: '<span class="sub">-</span>', d: null };
+    const d = b - a, pc = a ? d / Math.abs(a) * 100 : null, tiny = Math.abs(d) < 1e-9 || (pc != null && Math.abs(pc) < 0.5);
+    const tone = tiny || !m.hb ? "flat" : (d > 0) === (m.hb > 0) ? "up" : "down";
+    return { d, t: '<span class="chg ' + tone + '">' + (tiny ? "no change" : (d > 0 ? "+" : "−") + (m.dfmt || m.fmt)(Math.abs(d)) + (pc != null && !m.dfmt ? " (" + (d > 0 ? "+" : "−") + n1(Math.abs(pc), 0) + "%)" : "")) + "</span>" };
+  };
+  const ms = CMP.filter(m => m.f && CS.on.includes(m.id));
+  // headline
+  const hd = ["tot", "val", "net"].map(id => CMP.find(m => m.id === id)).filter(m => CS.on.includes(m.id));
+  $("#cmpHead").innerHTML = hd.map(m => { const a = m.f(A), b = m.f(B), c = chg(m, a, b); return "<div><span>" + esc(m.l.replace(/ \(.*\)/, "")) + "</span><b>" + (b == null ? "-" : m.fmt(b)) + "</b><br>" + c.t + "</div>"; }).join("");
+  $("#cmpTbl").innerHTML = ms.length ? '<table><thead><tr><th>Measure</th><th class="r ca">A · ' + esc(lab(A)) + '</th><th class="r cb">B · ' + esc(lab(B)) + '</th><th class="r">Change</th><th>Side by side</th></tr></thead><tbody>' + ms.map(m => {
+    const a = m.f(A), b = m.f(B), c = chg(m, a, b), mx = Math.max(Math.abs(a || 0), Math.abs(b || 0)) || 1;
+    return "<tr><td><b>" + esc(m.l) + '</b></td><td class="r">' + (a == null ? '<span class="sub">no entry</span>' : m.fmt(a)) + '</td><td class="r">' + (b == null ? '<span class="sub">no entry</span>' : m.fmt(b)) + '</td><td class="r">' + c.t + '</td><td><div class="pair"><i class="a" style="width:' + (Math.abs(a || 0) / mx * 100).toFixed(1) + '%"></i><i class="b" style="width:' + (Math.abs(b || 0) / mx * 100).toFixed(1) + '%"></i></div></td></tr>';
+  }).join("") + "</tbody></table>" : '<div class="empty"><b>Nothing selected</b>Tick at least one measure above.</div>';
+
+  // per cow
+  $("#cmpCowsP").hidden = !CS.on.includes("_cows");
+  if (CS.on.includes("_cows")) {
+    const rows = M.active.map(a => { const ma = a.milk.find(m => +m.date === +A.d), mb = a.milk.find(m => +m.date === +B.d); return { a, va: ma ? ma.tot : null, vb: mb ? mb.tot : null }; }).filter(x => x.va != null || x.vb != null);
+    rows.sort((x, y) => ((x.vb || 0) - (x.va || 0)) - ((y.vb || 0) - (y.va || 0)));
+    const mx = Math.max(1, ...rows.map(x => Math.max(x.va || 0, x.vb || 0)));
+    const mL = { fmt: L, hb: 1 };
+    $("#cmpCows").innerHTML = rows.length ? '<table><thead><tr><th>Cow</th><th class="r ca">A</th><th class="r cb">B</th><th class="r">Change</th><th></th></tr></thead><tbody>' + rows.map(x => '<tr class="click" data-k="' + esc(x.a.key) + '"><td><b>' + esc(x.a.name || x.a.tag) + '</b></td><td class="r">' + (x.va == null ? '<span class="sub">-</span>' : L(x.va)) + '</td><td class="r">' + (x.vb == null ? '<span class="sub">-</span>' : L(x.vb)) + '</td><td class="r">' + chg(mL, x.va, x.vb).t + '</td><td><div class="pair"><i class="a" style="width:' + ((x.va || 0) / mx * 100).toFixed(1) + '%"></i><i class="b" style="width:' + ((x.vb || 0) / mx * 100).toFixed(1) + '%"></i></div></td></tr>').join("") + "</tbody></table>" : '<div class="empty">No milk entries on these days.</div>';
+    $("#cmpCows").querySelectorAll("tr.click").forEach(t => t.addEventListener("click", () => openCow(t.dataset.k)));
+  }
+  // diary
+  const evA = evByDay[A.k] || [], evB = A.k === B.k ? [] : (evByDay[B.k] || []);
+  $("#cmpDiaryP").hidden = !CS.on.includes("_diary") || (!evA.length && !evB.length);
+  $("#cmpCowsP").parentElement.style.gridTemplateColumns = (!$("#cmpDiaryP").hidden && CS.on.includes("_cows")) ? "" : "minmax(0,1fr)";
+  if (CS.on.includes("_diary")) {
+    const col = (x, tag) => { const l = (evByDay[x.k] || []); return '<div><h4 style="margin:0 0 6px;font-size:13px">' + tag + " · " + esc(lab(x)) + "</h4>" + (l.length ? '<ul class="hist">' + l.map(e => "<li><b>" + esc(e.t) + "</b>" + (e.s ? "<br><span>" + esc(e.s) + "</span>" : "") + "</li>").join("") + "</ul>" : '<div class="empty">Nothing recorded.</div>') + "</div>"; };
+    $("#cmpDiary").innerHTML = (evA.length ? col(A, "A") : "") + (evB.length ? col(B, "B") : "");
+    $("#cmpDiary").style.gridTemplateColumns = evA.length && evB.length ? "" : "minmax(0,1fr)";
+  }
+}
+
+/* ---------- cow card ---------- */
+function openCow(key) {
+  const a = M.A.get(key); if (!a) return;
+  const D = M.D, dr = $("#drawer");
+  const hs = D.health.filter(h => h.key === key).sort((x, y) => y.date - x.date);
+  const br = D.breeding.filter(b => b.key === key).sort((x, y) => (y.ai || y.calving || 0) - (x.ai || x.calving || 0));
+  const vc = vaccStatus().cells.filter(c => c.key === key);
+  const age = a.ageD != null ? (a.ageD >= 730 ? n1(a.ageD / 365, 1) + " yrs" : Math.floor(a.ageD / 30.4) + " months") : "-";
+  const totalL = sum(a.milk, m => m.tot);
+  dr.innerHTML = '<button class="x" type="button" id="closeCow">Close</button><h2>' + esc(a.name || a.tag) + '</h2><div class="meta">' + esc([a.tag, a.species, a.breed, age].filter(x => x && x !== a.name).join(" · ")) + ' &nbsp;<span class="pill ' + a.br.tone + '">' + esc(a.br.label) + "</span></div>" +
+    '<div class="facts"><div><span>7-day avg</span><b>' + (a.inMilk && a.avg7 != null ? n1(a.avg7) + " L" : "Dry") + "</b></div><div><span>Days in milk</span><b>" + (a.inMilk && a.br.dim != null ? a.br.dim : "-") + "</b></div><div><span>10 Sep – 10 Oct</span><b>" + (totalL ? n0(totalL) + " L" : "-") + "</b></div><div><span>Last calving</span><b>" + fmtD(a.br.lastCalving) + "</b></div><div><span>Last AI</span><b>" + fmtD(a.br.lastService) + "</b></div><div><span>" + (a.br.exp ? "Calving due" : "Insurance till") + "</span><b>" + fmtD(a.br.exp || a.insTill) + "</b></div></div>" +
+    '<div class="panel"><h3>Milk record <span class="note">litres per day</span></h3><div class="chart" id="cowChart"></div></div>' +
+    '<div class="panel"><h3>Breeding</h3>' + (br.length ? '<ul class="hist">' + br.map(b => "<li>" + (b.calving ? "<b>Calved " + fmtDY(b.calving) + "</b>" + (b.calfTag ? " · calf " + esc(b.calfTag) + (b.calfSex ? " (" + esc(b.calfSex) + ")" : "") : "") + "<br>" : "") + (b.ai ? "AI " + fmtDY(b.ai) + (b.bull ? " · " + esc(b.bull) : "") : "") + (dateList(b.repeat).length ? "<br><span>Repeat AI " + dateList(b.repeat).map(fmtD).join(", ") + "</span>" : "") + (b.pd ? "<br><span>PD " + (b.pdDate ? fmtD(b.pdDate) + ": " : "") + esc(b.pd) + "</span>" : "") + "</li>").join("") + "</ul>" : '<div class="empty">No entries in sheet 4.</div>') + "</div>" +
+    '<div class="panel"><h3>Health</h3>' + (hs.length ? '<ul class="hist">' + hs.map(h => "<li><b>" + esc(h.diagnosis || h.symptoms) + "</b> · " + fmtDY(h.date) + "<br><span>" + esc([h.medicine, h.cost ? inr(h.cost) : "", h.withdrawal ? "withdrawal till " + fmtD(h.withdrawal) : "", h.outcome].filter(Boolean).join(" · ")) + "</span></li>").join("") + "</ul>" : '<div class="empty">No treatments in sheet 5.</div>') + "</div>" +
+    '<div class="panel"><h3>Vaccination</h3>' + (vc.length ? '<ul class="hist">' + vc.map(c => '<li><span class="dot ' + c.state + '"></span> <b>' + esc(c.vac) + "</b> · " + (c.given ? "given " + fmtD(c.given) : "not given") + (c.next ? "<span> · next " + fmtDY(c.next) + "</span>" : "") + "</li>").join("") + "</ul>" : '<div class="empty">No entries in sheet 6.</div>') + "</div>";
+  $("#scrim").hidden = false; dr.hidden = false; dr.scrollTop = 0;
+  lineChart($("#cowChart"), { series: [{ points: a.milk.map(m => ({ x: m.date, y: m.tot, m })), color: "var(--accent)", area: true, end: true }], height: 190, emptyT: "No milk entries", emptyP: "", tip: p => "<b>" + fmtDY(p.x) + "</b><br>" + n1(p.y) + " L (M " + n1(p.m.am) + " · E " + n1(p.m.pm) + ")" + (p.m.remarks ? "<br>" + esc(p.m.remarks) : "") });
+  if (LANG === "ta") translateDOM(dr);
+  $("#closeCow").addEventListener("click", closeCow); $("#closeCow").focus();
+}
+function closeCow() { $("#drawer").hidden = true; $("#scrim").hidden = true; }
+
+/* ---------- English / Tamil ---------- */
+let LANG = "en";
+try { if (localStorage.getItem("dairy-lang") === "ta") LANG = "ta"; } catch (e) {}
+const TM = { Jan: "ஜன", Feb: "பிப்", Mar: "மார்", Apr: "ஏப்", May: "மே", Jun: "ஜூன்", Jul: "ஜூலை", Aug: "ஆக", Sep: "செப்", Oct: "அக்", Nov: "நவ", Dec: "டிச" };
+const TW = { Sun: "ஞாயி", Mon: "திங்", Tue: "செவ்", Wed: "புத", Thu: "வியா", Fri: "வெள்", Sat: "சனி" };
+const TA = {
+  "Dairy farm records ·": "பால் பண்ணை பதிவுகள் ·", "Sample farm": "மாதிரி பண்ணை", "Dairy Farm Dashboard": "பால் பண்ணை டாஷ்போர்டு",
+  "Overview": "கண்ணோட்டம்", "Charts": "வரைபடங்கள்", "Compare": "ஒப்பீடு", "Day by day": "தினசரி பதிவு", "Milk": "பால்", "Breeding": "இனப்பெருக்கம்",
+  "Health": "சுகாதாரம்", "Money": "பணம்", "Calves": "கன்றுகள்", "Show": "காட்டு", "All days": "எல்லா நாட்களும்",
+  "Milk per day": "தினசரி பால்", "Milk in period": "மொத்த பால்", "Milk that day": "அன்றைய பால்", "Cows milked": "கறந்த மாடுகள்",
+  "Milk value": "பால் மதிப்பு", "Expenses": "செலவுகள்", "Profit": "லாபம்", "Cost per litre": "லிட்டருக்கான செலவு", "L": "லி",
+  "animals": "கால்நடைகள்", "in milk": "கறவையில்", "dry": "வற்றியவை", "pregnant": "சினை", "heifers": "கிடேரிகள்", "calves": "கன்றுகள்",
+  "Needs attention": "கவனிக்க வேண்டியவை", "Farm diary": "பண்ணை நாட்குறிப்பு", "Open card": "விவரம் பார்",
+  "Urgent": "அவசரம்", "Soon": "விரைவில்", "Note": "குறிப்பு", "Good": "நல்லது",
+  "vs previous": "முந்தைய காலத்துடன்", "vs previous day": "முந்தைய நாளுடன்", "same as previous period": "முந்தைய காலத்தைப் போலவே",
+  "no entries": "பதிவுகள் இல்லை", "no entry for this day": "இந்த நாளுக்கு பதிவு இல்லை", "milk value − expenses": "பால் மதிப்பு − செலவுகள்",
+  "Every day from 10 Sep to 10 Oct 2026 · tap a day to see it across the dashboard": "10 செப் முதல் 10 அக் 2026 வரை ஒவ்வொரு நாளும் · ஒரு நாளைத் தொட்டால் முழு டாஷ்போர்டும் அந்த நாளைக் காட்டும்",
+  "Date": "தேதி", "Cows": "மாடுகள்", "Morning L": "காலை லி", "Evening L": "மாலை லி", "Total L": "மொத்தம் லி", "vs 7-day avg": "7-நாள் சராசரியுடன்",
+  "Fat %": "கொழுப்பு %", "SNF %": "SNF %", "Conc. kg": "அடர்தீவனம் கிலோ", "Green kg": "பசுந்தீவனம் கிலோ", "Other income": "பிற வருமானம்",
+  "Milk payment": "பெற்ற பால் பணம்", "Notes": "குறிப்புகள்", "Total": "மொத்தம்",
+  "Daily milk, litres": "தினசரி பால், லிட்டர்", "tap or hover a day": "ஒரு நாளைத் தொடவும்", "Daily total": "தினசரி மொத்தம்", "7-day average": "7-நாள் சராசரி",
+  "Average fat": "சராசரி கொழுப்பு", "Average SNF": "சராசரி SNF", "Average litres per cow per day": "ஒரு மாட்டுக்கு தினசரி சராசரி லிட்டர்",
+  "tap a cow for her card": "மாட்டின் விவரத்திற்கு தொடவும்",
+  "Herd and breeding": "மந்தை மற்றும் இனப்பெருக்கம்", "Target: one calf per cow every 12–13 months": "இலக்கு: ஒவ்வொரு மாடும் 12–13 மாதத்துக்கு ஒரு கன்று",
+  "Animal": "கால்நடை", "Status": "நிலை", "Milk, 7-day avg": "பால், 7-நாள் சராசரி", "Last calving": "கடைசியாக ஈன்றது", "Last AI": "கடைசி கருவூட்டல்", "Next step": "அடுத்த படி",
+  "Dry off": "வற்ற வைக்கவும்", "due to calve": "கன்று ஈனும்", "Watch for return heat": "மீண்டும் சினைப்பருவம் வருகிறதா கவனிக்கவும்", "Pregnancy check": "சினை பரிசோதனை",
+  "Breed by this date": "இத்தேதிக்குள் கருவூட்டவும்", "ready for first AI": "முதல் கருவூட்டலுக்குத் தயார்",
+  "Health and vaccination": "சுகாதாரம் மற்றும் தடுப்பூசி", "Next due date per animal, from sheet 6": "ஒவ்வொரு கால்நடைக்கும் அடுத்த தேதி, தாள் 6 இலிருந்து",
+  "Vaccination and deworming status": "தடுப்பூசி மற்றும் குடற்புழு நீக்க நிலை", "done": "முடிந்தது", "due in 30 days": "30 நாளில் போட வேண்டும்", "overdue": "தாமதம்",
+  "Treatments": "சிகிச்சைகள்", "latest first": "புதியது முதலில்", "Lumpy skin": "தோல் கழலை நோய்", "Deworming": "குடற்புழு நீக்கம்", "given": "போடப்பட்டது", "not given": "போடப்படவில்லை",
+  "Recovered": "குணமடைந்தது", "Under treatment": "சிகிச்சையில்", "Referred": "பரிந்துரைக்கப்பட்டது", "Died": "இறந்தது",
+  "Income and expenses by day": "தினசரி வருமானம் மற்றும் செலவு", "tap a day to select it": "ஒரு நாளைத் தேர்ந்தெடுக்க தொடவும்",
+  "Milk value + other income": "பால் மதிப்பு + பிற வருமானம்", "Where the money went": "பணம் எங்கே செலவானது",
+  "Feed": "தீவனம்", "Labour": "கூலி", "Fodder": "தீவனப்புல்", "Medicine": "மருந்து", "Electricity": "மின்சாரம்", "Vet & AI fees": "மருத்துவர் & கருவூட்டல் கட்டணம்",
+  "Milk sale": "பால் விற்பனை", "Dung / manure sale": "சாணம் / எரு விற்பனை", "Animal / calf sale": "கால்நடை / கன்று விற்பனை", "Other": "பிற",
+  "Birth weight, colostrum and growth from sheet 8": "பிறப்பு எடை, சீம்பால் மற்றும் வளர்ச்சி, தாள் 8 இலிருந்து",
+  "Calf": "கன்று", "Born": "பிறந்தது", "Birth wt": "பிறப்பு எடை", "Colostrum": "சீம்பால்", "3 mo": "3 மாதம்", "6 mo": "6 மாதம்", "Female": "பெண்", "Male": "ஆண்", "Yes": "ஆம்", "No": "இல்லை",
+  "10 Sep – 10 Oct 2026, day by day · tap any day in a chart to select it": "10 செப் – 10 அக் 2026, தினசரி · எந்த வரைபடத்திலும் ஒரு நாளைத் தொட்டு தேர்ந்தெடுக்கலாம்",
+  "Morning and evening milk, every day": "காலை மற்றும் மாலை பால், ஒவ்வொரு நாளும்", "litres": "லிட்டர்", "Morning": "காலை", "Evening": "மாலை",
+  "Each cow's daily milk": "ஒவ்வொரு மாட்டின் தினசரி பால்", "same scale for every cow · tap a name for her card": "எல்லா மாடுகளுக்கும் ஒரே அளவுகோல் · விவரத்திற்கு பெயரைத் தொடவும்",
+  "dashed line: 3.5% benchmark": "கோடு: 3.5% அளவுகோல்", "dashed line: 8.5% benchmark": "கோடு: 8.5% அளவுகோல்",
+  "Money in vs money out, running total": "வரவும் செலவும், கூட்டுத்தொகை", "gap = profit so far": "இடைவெளி = இதுவரை லாபம்",
+  "Price received per litre": "லிட்டருக்கு கிடைத்த விலை", "₹ per litre, from fat and SNF": "லிட்டருக்கு ₹, கொழுப்பு மற்றும் SNF படி",
+  "Milk per kg of concentrate": "ஒரு கிலோ அடர்தீவனத்துக்கு பால்", "litres per kg · higher is better": "கிலோவுக்கு லிட்டர் · அதிகம் நல்லது",
+  "Herd make-up": "மந்தை அமைப்பு", "as of 10 Oct": "10 அக் நிலவரப்படி", "Breeding status of cows and heifers": "மாடுகள் மற்றும் கிடேரிகளின் இனப்பெருக்க நிலை",
+  "In milk": "கறவையில்", "Dry": "வற்றியது", "Heifers": "கிடேரிகள்", "Bulls": "காளைகள்", "Pregnant": "சினை", "Repeat breeder": "திரும்பத் திரும்ப சினை பிடிக்காதது",
+  "Inseminated, waiting for PD": "கருவூட்டப்பட்டது, சினை பரிசோதனைக்கு காத்திருப்பு", "Open, needs AI": "சினை இல்லை, கருவூட்டல் தேவை",
+  "Fresh / ready for AI": "புதிதாக ஈன்றது / கருவூட்டத் தயார்", "Heifer": "கிடேரி", "No record": "பதிவு இல்லை",
+  "Compare two days": "இரு நாட்கள் ஒப்பீடு", "Pick any two days from 10 Sep to 10 Oct and choose what to compare": "10 செப் முதல் 10 அக் வரை ஏதேனும் இரு நாட்களைத் தேர்ந்தெடுத்து, எதை ஒப்பிட வேண்டும் எனத் தேர்வு செய்யவும்",
+  "Day A": "நாள் A", "Day B": "நாள் B", "Swap days": "நாட்களை மாற்று", "Last two days": "கடைசி இரு நாட்கள்", "First vs last day": "முதல் நாள் vs கடைசி நாள்",
+  "Same weekday, week before B": "B-க்கு ஒரு வாரம் முன் அதே கிழமை", "Lowest vs highest milk day": "குறைந்த vs அதிக பால் நாள்",
+  "What to compare": "எதை ஒப்பிட வேண்டும்", "All": "அனைத்தும்", "Milk only": "பால் மட்டும்", "Money only": "பணம் மட்டும்", "Feed and quality": "தீவனம் மற்றும் தரம்", "Clear": "அழி",
+  "Quality and price": "தரம் மற்றும் விலை", "Sections": "பகுதிகள்", "Total milk": "மொத்த பால்", "Morning milk": "காலை பால்", "Evening milk": "மாலை பால்",
+  "Milk per cow": "ஒரு மாட்டுக்கு பால்", "Price per litre": "லிட்டருக்கு விலை", "Milk payment received": "பெற்ற பால் பணம்",
+  "Day's net (milk value + income − expenses)": "அன்றைய நிகரம் (பால் மதிப்பு + வருமானம் − செலவு)", "Day's net": "அன்றைய நிகரம்",
+  "Concentrate fed": "கொடுத்த அடர்தீவனம்", "Green fodder": "பசுந்தீவனம்", "Milk per kg concentrate": "அடர்தீவன கிலோவுக்கு பால்",
+  "Each cow's milk": "ஒவ்வொரு மாட்டின் பால்", "Farm diary entries": "பண்ணை நாட்குறிப்பு பதிவுகள்", "Measure": "அளவீடு", "Change": "மாற்றம்", "Side by side": "அருகருகே",
+  "Cow": "மாடு", "Each cow": "ஒவ்வொரு மாடும்", "biggest drop first": "அதிக குறைவு முதலில்", "Farm diary on both days": "இரு நாட்களின் பண்ணை நாட்குறிப்பு",
+  "change = B − A": "மாற்றம் = B − A", "no change": "மாற்றமில்லை", "no entry": "பதிவு இல்லை", "Nothing recorded.": "எதுவும் பதிவு இல்லை.",
+  "pick two different days": "இரண்டு வெவ்வேறு நாட்களைத் தேர்ந்தெடுக்கவும்", "Nothing selected": "எதுவும் தேர்வு செய்யப்படவில்லை", "Tick at least one measure above.": "மேலே குறைந்தது ஒரு அளவீட்டைத் தேர்வு செய்யவும்.",
+  "Close": "மூடு", "7-day avg": "7-நாள் சராசரி", "Days in milk": "கறவை நாட்கள்", "Calving due": "கன்று ஈனும் தேதி", "Insurance till": "காப்பீடு முடிவு",
+  "Milk record": "பால் பதிவு", "litres per day": "தினசரி லிட்டர்", "Vaccination": "தடுப்பூசி", "Positive": "சினை உண்டு", "Negative": "சினை இல்லை",
+  "No entries in sheet 4.": "தாள் 4-இல் பதிவுகள் இல்லை.", "No treatments in sheet 5.": "தாள் 5-இல் சிகிச்சைப் பதிவுகள் இல்லை.", "No entries in sheet 6.": "தாள் 6-இல் பதிவுகள் இல்லை.",
+  "Ready for AI": "கருவூட்டத் தயார்", "Pregnancy check due": "சினை பரிசோதனை செய்ய வேண்டும்", "Dry-off overdue": "வற்ற வைப்பது தாமதம்", "Calving date passed": "ஈனும் தேதி கடந்துவிட்டது",
+  "Not pregnant · re-breed": "சினை இல்லை · மீண்டும் கருவூட்டவும்", "Heifer · ready for first AI": "கிடேரி · முதல் கருவூட்டலுக்குத் தயார்", "No breeding record": "இனப்பெருக்கப் பதிவு இல்லை",
+  "Enter the actual calving date in sheet 4, or re-check the pregnancy with your vet.": "உண்மையான ஈன்ற தேதியை தாள் 4-இல் பதியவும், அல்லது மருத்துவரிடம் சினையை மீண்டும் சரிபார்க்கவும்.",
+  "Watch for heat every 21 days and inseminate 12–18 hours after heat starts.": "21 நாளுக்கு ஒருமுறை சினைப்பருவத்தைக் கவனித்து, அது தொடங்கி 12–18 மணி நேரத்தில் கருவூட்டவும்.",
+  "Target is AI within 60–90 days of calving. Watch for heat closely; consult the vet if she shows no heat.": "ஈன்ற 60–90 நாளுக்குள் கருவூட்டுவதே இலக்கு. சினைப்பருவத்தைக் கவனமாகப் பாருங்கள்; அறிகுறி இல்லையெனில் மருத்துவரை அணுகவும்.",
+  "Crossbred heifers can be bred at 15–18 months once they reach good body weight. Watch for her first heats.": "கலப்பின கிடேரிகள் நல்ல உடல் எடை அடைந்ததும் 15–18 மாதத்தில் கருவூட்டலாம். முதல் சினைப்பருவத்தைக் கவனிக்கவும்.",
+  "Low fat lowers the rate per litre. Give enough dry fodder (paddy straw) along with green fodder, and mineral mixture daily.": "கொழுப்பு குறைந்தால் லிட்டர் விலை குறையும். பசுந்தீவனத்துடன் போதுமான உலர் தீவனம் (வைக்கோல்) மற்றும் தினமும் தாது உப்புக் கலவை கொடுக்கவும்.",
+  "Low SNF lowers the rate. Check concentrate quantity, mineral mixture and that milk is not diluted at the collection point.": "SNF குறைந்தால் விலை குறையும். அடர்தீவன அளவு, தாது உப்புக் கலவை, சேகரிப்பு இடத்தில் பால் நீர்க்கப்படவில்லை என்பதைச் சரிபார்க்கவும்.",
+  "Feed above about two-thirds of milk income leaves little margin. Grow CO-4/CO-5 fodder, feed concentrate by yield, and review low-yield cows.": "தீவனச் செலவு பால் வருமானத்தில் மூன்றில் இரண்டு பங்கைத் தாண்டினால் லாபம் குறைவு. CO-4/CO-5 தீவனப்புல் வளர்க்கவும், கறவைக்கேற்ப அடர்தீவனம் கொடுக்கவும், குறைந்த கறவை மாடுகளை மறுபரிசீலனை செய்யவும்.",
+  "Expenses were higher than income. Look at the biggest expense in Money and at cows giving the least milk.": "வருமானத்தை விட செலவு அதிகம். பணம் பகுதியில் பெரிய செலவையும், குறைந்த பால் தரும் மாடுகளையும் பாருங்கள்.",
+  "Watch closely for scours and weakness for the first 3 months; keep the shed dry.": "முதல் 3 மாதம் கழிச்சல் மற்றும் சோர்வைக் கவனமாகப் பாருங்கள்; கொட்டகையை உலர வைக்கவும்.",
+  "North-east monsoon: tick fever and mastitis season": "வடகிழக்கு பருவமழை: உண்ணிக் காய்ச்சல் மற்றும் மடி வீக்க காலம்",
+  "Keep floors dry, spray for ticks every 2–3 weeks, dip teats after milking, and keep dry fodder stocked for wet days.": "தரையை உலர வைக்கவும், 2–3 வாரத்துக்கு ஒருமுறை உண்ணி மருந்து தெளிக்கவும், கறந்த பின் காம்புகளை கிருமிநாசினியில் நனைக்கவும், மழை நாட்களுக்கு உலர் தீவனம் சேமிக்கவும்.",
+  "Summer: plan fodder and cooling": "கோடை: தீவனமும் குளிர்ச்சியும் திட்டமிடுங்கள்", "Before the north-east monsoon": "வடகிழக்கு பருவமழைக்கு முன்",
+  "No milk entries yet": "இன்னும் பால் பதிவுகள் இல்லை", "Nothing needs attention": "கவனிக்க வேண்டியது எதுவும் இல்லை", "All records are up to date.": "எல்லா பதிவுகளும் புதுப்பிக்கப்பட்டுள்ளன.",
+  "Check cows marked below, feed changes and drinking water.": "கீழே குறிக்கப்பட்ட மாடுகள், தீவன மாற்றம், குடிநீர் ஆகியவற்றைச் சரிபார்க்கவும்.",
+  "Cattle feed, 5 bags": "மாட்டுத் தீவனம், 5 மூட்டை", "Fertiliser for CO-4 fodder plot": "CO-4 தீவனப்புல் நிலத்துக்கு உரம்", "EB bill (shed, chaff cutter)": "மின் கட்டணம் (கொட்டகை, தீவனம் வெட்டும் இயந்திரம்)",
+  "AI charges": "கருவூட்டல் கட்டணம்", "Paddy straw, 1 load": "வைக்கோல், 1 லோடு", "Mineral mixture 5 kg": "தாது உப்புக் கலவை 5 கிலோ", "Dung sale – 1 tractor load": "சாண விற்பனை – 1 டிராக்டர் லோடு",
+  "Male calf C-29 sold": "ஆண் கன்று C-29 விற்கப்பட்டது", "Surplus male calf": "கூடுதல் ஆண் கன்று", "Local buyer": "உள்ளூர் வியாபாரி",
+  "Suspected theileriosis (tick fever)": "உண்ணிக் காய்ச்சல் (தெய்லேரியோசிஸ்) சந்தேகம்", "Calf scours": "கன்று கழிச்சல்", "Clinical mastitis": "மடி வீக்க நோய்", "Mild bloat": "லேசான வயிறு உப்புசம்", "Anoestrus": "சினைப்பருவம் வராமை",
+  "Anti-theilerial injection (as prescribed)": "தெய்லேரியா எதிர் ஊசி (மருத்துவர் பரிந்துரைப்படி)", "ORS + medicine (as prescribed)": "ORS + மருந்து (மருத்துவர் பரிந்துரைப்படி)", "Intramammary tubes (as prescribed)": "மடிக்குள் செலுத்தும் மருந்து (மருத்துவர் பரிந்துரைப்படி)",
+  "HF cross": "HF கலப்பினம்", "Jersey cross": "ஜெர்சி கலப்பினம்", "Kangayam": "காங்கேயம்", "Murrah": "முர்ரா", "Buffalo": "எருமை"
+};
+const tm = s => TM[s] || s;
+const RX = [
+  [/^Milk payment – society \((.+)\)$/, (m, d) => "பால் பணம் – சங்கம் (" + gen(d) + ")"], [/^Wages – (.+)$/, (m, n) => "கூலி – " + n], [/^Semen (.+)$/, (m, s) => "விந்து " + s],
+  [/^Sample records for a (\d+)-cow farm, to show how the dashboard works$/, (m, n) => "டாஷ்போர்டு எப்படி வேலை செய்கிறது எனக் காட்ட " + n + " மாடுகள் கொண்ட பண்ணையின் மாதிரி பதிவுகள்"],
+  [/^From (.+)$/, (m, f) => f + " இலிருந்து"],
+  [/^Pregnant · (\d+) mo$/, (m, n) => "சினை · " + n + " மாதம்"],
+  [/^Dry · calves (.+)$/, (m, d) => "வற்றியது · " + T(d) + " ஈனும்"],
+  [/^Repeat breeder · (\d+) AI$/, (m, n) => "திரும்பத் திரும்ப சினை பிடிக்காதது · " + n + " கருவூட்டல்"],
+  [/^AI done (\d+) d ago$/, (m, n) => n + " நாள் முன் கருவூட்டல்"],
+  [/^Not bred · (\d+) d$/, (m, n) => "கருவூட்டப்படவில்லை · " + n + " நாள்"],
+  [/^Fresh · (\d+) d$/, (m, n) => "புதிதாக ஈன்றது · " + n + " நாள்"],
+  [/^Heifer · (\d+) mo$/, (m, n) => "கிடேரி · " + n + " மாதம்"],
+  [/^(\d+) days in milk$/, (m, n) => n + " கறவை நாட்கள்"],
+  [/^(\d+) services$/, (m, n) => n + " முறை கருவூட்டல்"],
+  [/^(\d+) days old$/, (m, n) => n + " நாள் வயது"],
+  [/^(\d+) urgent$/, (m, n) => n + " அவசரம்"], [/^(\d+) soon$/, (m, n) => n + " விரைவில்"],
+  [/^newest first · (\d+) entries$/, (m, n) => "புதியது முதலில் · " + n + " பதிவுகள்"],
+  [/^average of (\d+) days?$/, (m, n) => n + " நாட்களின் சராசரி"], [/^(\d+) days? recorded$/, (m, n) => n + " நாட்கள் பதிவு"],
+  [/^(\d+) days? with milk entries$/, (m, n) => "பால் பதிவுள்ள நாட்கள்: " + n],
+  [/^from sheets? (.+)$/, (m, s) => "தாள் " + s.replace(" and ", ", ") + " இலிருந்து"],
+  [/^incl\. (.+) other income$/, (m, v) => v + " பிற வருமானம் உட்பட"], [/^selling at (.+)\/L$/, (m, v) => "விற்பனை விலை " + v + "/லி"],
+  [/^(.+) L per cow$/, (m, v) => "ஒரு மாட்டுக்கு " + v + " லி"],
+  [/^Herd average (.+) L per cow per day$/, (m, v) => "மந்தை சராசரி: ஒரு மாட்டுக்கு தினமும் " + v + " லி"],
+  [/^Profit = milk value \(sheet 3\) \+ other income − expenses \((.+)\)$/, (m, s) => "லாபம் = பால் மதிப்பு (தாள் 3) + பிற வருமானம் − செலவுகள் (" + T(s) + ")"],
+  [/^sheets? (.+)$/, (m, s) => "தாள் " + s.replace(" and ", ", ")],
+  [/^Litres per cow on (.+)$/, (m, d) => T(d) + " அன்று ஒரு மாட்டுக்கு லிட்டர்"],
+  [/^Withdrawal till (.+)$/i, (m, d) => T(d) + " வரை பால் விற்க வேண்டாம்"],
+  [/^Female$/, () => "பெண்"], [/^of (.+)$/, (m, n) => n + " இன் கன்று"], [/^at (\d.+)$/, (m, d) => T(d) + " அன்று"],
+  [/^\+(\d+) more$/, (m, n) => "+" + n + " மேலும்"],
+  [/^Treatment – (.+)$/, (m, n) => "சிகிச்சை – " + n], [/^AI – (.+)$/, (m, n) => "கருவூட்டல் – " + n], [/^Repeat AI – (.+)$/, (m, n) => "மீண்டும் கருவூட்டல் – " + n],
+  [/^Heat seen – (.+)$/, (m, n) => "சினைப்பருவம் – " + n], [/^Pregnancy check – (.+)$/, (m, n) => "சினை பரிசோதனை – " + n], [/^(.+) calved$/, (m, n) => n + " கன்று ஈன்றது"],
+  [/^(.+) given – (\d+) animals?$/, (m, v, n) => T(v) + " போடப்பட்டது – " + n + " கால்நடைகள்"],
+  [/^Milk register last updated (.+)$/, (m, d) => "பால் பதிவேடு கடைசியாக " + T(d) + " அன்று புதுப்பிக்கப்பட்டது"],
+  [/^Herd milk down (\d+)% this week$/, (m, n) => "இந்த வாரம் மந்தை பால் " + n + "% குறைந்தது"], [/^Herd milk up (\d+)% this week$/, (m, n) => "இந்த வாரம் மந்தை பால் " + n + "% அதிகரித்தது"],
+  [/^(.+) L\/day against (.+) L\/day the week before\.(.*)$/, (m, a, b, r) => "முந்தைய வாரம் " + b + " லி/நாள், இந்த வாரம் " + a + " லி/நாள்." + (r ? " " + T(r.trim()) : "")],
+  [/^(.+)'s milk fell (\d+)% in 3 days$/, (m, n, p) => n + " பால் 3 நாளில் " + p + "% குறைந்தது"],
+  [/^(.+) L\/day against her usual (.+) L\. Check the udder for mastitis \(strip-cup test\), temperature, heat signs and appetite\.$/, (m, a, b) => "வழக்கமான " + b + " லி-க்கு பதில் " + a + " லி/நாள். மடி வீக்கம் (ஸ்ட்ரிப்-கப் சோதனை), உடல் வெப்பம், சினைப்பருவ அறிகுறி, பசி ஆகியவற்றைச் சரிபார்க்கவும்."],
+  [/^Do not sell (.+)'s milk until (.+)$/, (m, n, d) => T(d) + " வரை " + n + " பாலை விற்க வேண்டாம்"],
+  [/^([\s\S]*)Milk with drug residue can be rejected by the society\.$/, (m, a) => (a.trim() ? a.trim().replace(/\.$/, "").split(" · ").map(T).join(" · ") + ". " : "") + "மருந்து எச்சம் உள்ள பால் சங்கத்தால் நிராகரிக்கப்படலாம்."],
+  [/^(.+) is under treatment$/, (m, n) => n + " சிகிச்சையில் உள்ளது"],
+  [/^(.+): expected calving (.+) has passed$/, (m, n, d) => n + ": எதிர்பார்த்த ஈனும் தேதி " + T(d) + " கடந்துவிட்டது"],
+  [/^Dry off (.+) now$/, (m, n) => n + " ஐ இப்போதே வற்ற வைக்கவும்"],
+  [/^Calving is due (.+)\. She needs about 60 dry days to rebuild udder and body condition\.$/, (m, d) => "ஈனும் தேதி " + T(d) + ". மடியும் உடலும் மீள சுமார் 60 வற்றல் நாட்கள் தேவை."],
+  [/^(.+) calves in (\d+) days?$/, (m, n, k) => n + " இன்னும் " + k + " நாளில் கன்று ஈனும்"],
+  [/^Move her to a clean, dry calving area by (.+)\. Keep the vet's number ready\.$/, (m, d) => T(d) + " க்குள் சுத்தமான, உலர்ந்த ஈனும் இடத்துக்கு மாற்றவும். மருத்துவர் எண்ணைத் தயாராக வைக்கவும்."],
+  [/^Dry off (.+) by (.+)$/, (m, n, d) => T(d) + " க்குள் " + n + " ஐ வற்ற வைக்கவும்"], [/^Calving due (.+)\.$/, (m, d) => "ஈனும் தேதி " + T(d) + "."],
+  [/^(.+) is a repeat breeder$/, (m, n) => n + " திரும்பத் திரும்ப சினை பிடிக்கவில்லை"],
+  [/^(\d+) inseminations? since calving without conception\. Ask the vet to examine her; check mineral mixture and body condition\.$/, (m, k) => "ஈன்ற பின் " + k + " முறை கருவூட்டியும் சினை பிடிக்கவில்லை. மருத்துவரிடம் பரிசோதிக்கவும்; தாது உப்புக் கலவை மற்றும் உடல் நிலையைச் சரிபார்க்கவும்."],
+  [/^(.+) is not pregnant$/, (m, n) => n + " சினையாக இல்லை"],
+  [/^Pregnancy check due for (.+)$/, (m, n) => n + " க்கு சினை பரிசோதனை செய்ய வேண்டும்"],
+  [/^Inseminated on (.+) \((\d+) days ago\)\. Book a PD with the vet\.$/, (m, d, k) => T(d) + " அன்று கருவூட்டப்பட்டது (" + k + " நாள் முன்). மருத்துவரிடம் சினை பரிசோதனைக்கு பதிவு செய்யவும்."],
+  [/^(.+) not bred (\d+) days after calving$/, (m, n, k) => "ஈன்று " + k + " நாளாகியும் " + n + " கருவூட்டப்படவில்லை"],
+  [/^(.+) is (\d+) months old$/, (m, n, k) => n + " க்கு " + k + " மாத வயது"],
+  [/^(.+) overdue for (\d+) animals?$/, (m, v, k) => T(v) + ": " + k + " கால்நடைகளுக்கு தாமதம்"],
+  [/^Due since (.+?): (.+)\. Contact the veterinary dispensary\.$/, (m, d, l) => T(d) + " முதல் நிலுவை: " + l.replace(/ and (\d+) more$/, " மற்றும் இன்னும் $1") + ". கால்நடை மருந்தகத்தைத் தொடர்பு கொள்ளவும்."],
+  [/^(.+) due for (\d+) animals?$/, (m, v, k) => T(v) + ": " + k + " கால்நடைகளுக்கு போட வேண்டும்"],
+  [/^By (.+?): (.+)\.$/, (m, d, l) => T(d) + " க்குள்: " + l.replace(/ and (\d+) more$/, " மற்றும் இன்னும் $1") + "."],
+  [/^Renew insurance for (.+)$/, (m, n) => n + " க்கு காப்பீட்டைப் புதுப்பிக்கவும்"],
+  [/^Policy ends (.+)\. Claims need the ear tag and a valid policy\.$/, (m, d) => "பாலிசி " + T(d) + " அன்று முடிகிறது. இழப்பீடு பெற காது வில்லையும் செல்லுபடியான பாலிசியும் தேவை."],
+  [/^(₹[\d,]+) milk payment pending$/, (m, v) => v + " பால் பணம் நிலுவையில் உள்ளது"],
+  [/^Milk supplied from (.+) is not yet marked as received in sheet 3\.$/, (m, d) => T(d) + " முதல் வழங்கிய பாலுக்கான பணம் தாள் 3-இல் இன்னும் பெறப்பட்டதாகக் குறிக்கப்படவில்லை."],
+  [/^Average fat is (.+)$/, (m, v) => "சராசரி கொழுப்பு " + v], [/^Average SNF is (.+)$/, (m, v) => "சராசரி SNF " + v],
+  [/^Feed takes (\d+)% of milk value$/, (m, v) => "தீவனச் செலவு பால் மதிப்பில் " + v + "%"], [/^Feed is (\d+)% of milk value$/, (m, v) => "தீவனச் செலவு பால் மதிப்பில் " + v + "%"],
+  [/^Feed and fodder cost (.+) against (.+) of milk in (.+)\.$/, (m, a, b, p) => T(p) + " காலத்தில் " + b + " பால் மதிப்புக்கு தீவனச் செலவு " + a + "."],
+  [/^Loss of (.+) in (.+)$/, (m, v, p) => T(p) + " இல் " + v + " நஷ்டம்"],
+  [/^(.+) gives (.+) L\/day$/, (m, n, v) => n + " தினமும் " + v + " லி மட்டுமே தருகிறது"],
+  [/^Less than half the herd average of (.+) L\. Check whether her milk covers her feed cost\.$/, (m, v) => "மந்தை சராசரி " + v + " லி-ல் பாதிக்கும் குறைவு. அவளின் பால் தீவனச் செலவை ஈடுகட்டுகிறதா எனப் பாருங்கள்."],
+  [/^Calf (.+) missed colostrum in the first hour$/, (m, n) => "கன்று " + n + " முதல் மணி நேரத்தில் சீம்பால் பெறவில்லை"],
+  [/^(.+) L from (\d+) cows?$/, (m, v, k) => k + " மாடுகளிடமிருந்து " + v + " லி"],
+  [/^Morning (.+)$/, (m, v) => "காலை " + v], [/^Evening (.+)$/, (m, v) => "மாலை " + v], [/^7-day avg (.+)$/, (m, v) => "7-நாள் சராசரி " + v],
+  [/^Up to (.+)$/, (m, d) => T(d) + " வரை"], [/^In (₹.+)$/, (m, v) => "வரவு " + v], [/^Out (₹.+)$/, (m, v) => "செலவு " + v], [/^Profit (−?₹.+)$/, (m, v) => "லாபம் " + v],
+  [/^(₹.+) per litre$/, (m, v) => "லிட்டருக்கு " + v], [/^(.+) L milk per kg concentrate$/, (m, v) => "ஒரு கிலோ அடர்தீவனத்துக்கு " + v + " லி பால்"],
+  [/^(.+): income (.+), expenses (.+), profit (.+)$/, (m, d, a, b, c) => T(d) + ": வருமானம் " + a + ", செலவு " + b + ", லாபம் " + c],
+  [/^(.+): morning (.+) L, evening (.+) L, total (.+) L$/, (m, d, a, b, c) => T(d) + ": காலை " + a + " லி, மாலை " + b + " லி, மொத்தம் " + c + " லி"],
+  [/^avg (.+) L\/day$/, (m, v) => "சராசரி " + v + " லி/நாள்"], [/^(.+) L on (.+)$/, (m, v, d) => T(d) + " அன்று " + v + " லி"], [/^no entry (.+)$/, (m, d) => T(d) + " பதிவு இல்லை"],
+  [/^Calved (.+)$/, (m, d) => T(d) + " அன்று ஈன்றது"], [/^Repeat AI (.+)$/, (m, d) => "மீண்டும் கருவூட்டல் " + T(d)], [/^AI (\d.+)$/, (m, d) => "கருவூட்டல் " + T(d)],
+  [/^PD (.+): (.+)$/, (m, d, r) => "சினை பரிசோதனை " + T(d) + ": " + T(r)], [/^PD (.+)$/, (m, r) => "சினை பரிசோதனை: " + T(r)],
+  [/^withdrawal till (.+)$/, (m, d) => T(d) + " வரை பால் விற்க வேண்டாம்"], [/^given (.+)$/, (m, d) => T(d) + " அன்று போடப்பட்டது"], [/^next (.+)$/, (m, d) => "அடுத்து " + T(d)],
+  [/^Fat (.+)$/, (m, v) => "கொழுப்பு " + v], [/^Reading (.+) \.\.\.$/, (m, f) => f + " படிக்கப்படுகிறது ..."], [/^Loaded (.+)$/, (m, f) => f + " ஏற்றப்பட்டது"]
+];
+function gen(c) {
+  return c.replace(/\b(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/g, (x, d, mo) => d + " " + TM[mo])
+    .replace(/\b(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\b/g, w => TW[w])
+    .replace(/(\d) L\/day/g, "$1 லி/நாள்").replace(/(\d) L\b/g, "$1 லி").replace(/\bkg\b/g, "கிலோ").replace(/ pts\b/g, " புள்ளி").replace(/(\d) yrs\b/g, "$1 ஆண்டு").replace(/(\d) months\b/g, "$1 மாதம்").replace(/^no change$/, "மாற்றமில்லை");
+}
+function T(c) {
+  if (TA[c]) return TA[c];
+  if (TM[c]) return TM[c];
+  for (const [re, fn] of RX) { const m = c.match(re); if (m) return fn.apply(null, m); }
+  if (c.includes(" · ")) return c.split(" · ").map(T).join(" · ");
+  if (c.includes("; ")) return c.split("; ").map(T).join("; ");
+  return gen(c);
+}
+function tr(s) {
+  const m = s.match(/^(\s*(?:·\s*)?)([\s\S]*?)(\s*)$/);
+  return m[2] ? m[1] + T(m[2]) + m[3] : s;
+}
+function translateDOM(root) {
+  if (!root) return;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentNode && n.parentNode.closest && n.parentNode.closest("script,style,.lang") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+  const nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
+  nodes.forEach(n => {
+    if (LANG === "ta") { if (n.__en === undefined) n.__en = n.nodeValue; const v = tr(n.__en); if (v !== n.nodeValue) n.nodeValue = v; }
+    else if (n.__en !== undefined) { n.nodeValue = n.__en; }
+  });
+}
+function setLang(l) {
+  LANG = l; try { localStorage.setItem("dairy-lang", l); } catch (e) {}
+  document.documentElement.lang = l;
+  document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lang === l)));
+  translateDOM(document.body);
+  if (M) render();
+}
+document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => setLang(b.dataset.lang)));
+document.documentElement.lang = LANG;
+document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lang === LANG)));
+
+/* ---------- loading, storage ---------- */
+const S = { source: "sample", fileName: "" };
+const KEY = "dairy-dash-v1";
+function pack(o) { if (o instanceof Date) return { __d: ymd(o) }; if (Array.isArray(o)) return o.map(pack); if (o && typeof o === "object") { const r = {}; for (const k in o) if (k !== "key" && k !== "damKey" && k !== "tot") r[k] = pack(o[k]); return r; } return o; }
+function unpack(o) { if (Array.isArray(o)) return o.map(unpack); if (o && typeof o === "object") { if (o.__d) { const [y, m, d] = o.__d.split("-").map(Number); return new Date(y, m - 1, d); } const r = {}; for (const k in o) r[k] = unpack(o[k]); return r; } return o; }
+function save(D) { try { localStorage.setItem(KEY, JSON.stringify({ name: S.fileName, at: Date.now(), d: pack(D) })); } catch (e) {} }
+function restore() { try { const s = localStorage.getItem(KEY); if (!s) return null; const o = JSON.parse(s); S.fileName = o.name || "your workbook"; return Object.assign(emptyData(), unpack(o.d)); } catch (e) { return null; } }
+function toast(t) { const el = $("#toast"); el.textContent = LANG === "ta" ? tr(t) : t; el.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => el.hidden = true, 4200); }
+function use(D, src) { S.source = src; M = build(D); render(); }
+function loadFile(file) {
+  if (!file) return;
+  if (typeof XLSX === "undefined") { toast("The Excel reader did not load. Check your internet connection and try again."); return; }
+  const fr = new FileReader();
+  fr.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+      const D = parseWorkbook(wb); S.fileName = file.name; save(D); period = "all"; use(D, "file");
+      const tot = D.herd.length + D.milk.length + D.breeding.length + D.health.length + D.vacc.length + D.finance.length + D.sales.length;
+      toast(tot ? "Loaded " + file.name : "Loaded " + file.name + ". The sheets are still empty; add entries and load it again.");
+    } catch (err) { toast(err.message === "nosheets" ? "This file doesn't have the record sheets (1 Herd Register … 12 Disposal & Culling). Use the Dairy Farm Records workbook." : "Couldn't read this file. Save it as .xlsx in Excel and try again."); }
+  };
+  fr.onerror = () => toast("Couldn't open the file. Try again.");
+  toast("Reading " + file.name + " ...");
+  fr.readAsArrayBuffer(file);
+}
+$("#loadBtn").addEventListener("click", () => $("#fileIn").click());
+$("#fileIn").addEventListener("change", e => { loadFile(e.target.files[0]); e.target.value = ""; });
+$("#sampleBtn").addEventListener("click", () => { try { localStorage.removeItem(KEY); } catch (e) {} period = "all"; use(makeSample(), "sample"); toast("Showing sample data. Your workbook is not stored any more; load it again any time."); });
+$("#periodSel").addEventListener("change", e => { period = e.target.value; render(); });
+$("#scrim").addEventListener("click", closeCow);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeCow(); });
+let dragN = 0;
+window.addEventListener("dragenter", e => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files")) { dragN++; $("#drop").hidden = false; e.preventDefault(); } });
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("dragleave", () => { dragN = Math.max(0, dragN - 1); if (!dragN) $("#drop").hidden = true; });
+window.addEventListener("drop", e => { e.preventDefault(); dragN = 0; $("#drop").hidden = true; const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) loadFile(f); });
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (M) render(); }, 180); });
+
+const saved = restore();
+setPage(location.hash.slice(1));
+initCompare();
+if (saved) use(saved, "file"); else use(makeSample(), "sample");
+})();
+</script>
+</body>
+</html>
